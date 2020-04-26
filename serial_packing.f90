@@ -80,21 +80,29 @@ program packing
   use rng
   implicit none
   integer, parameter :: dp=selected_real_kind(15,300), L = 500
-  real(kind=dp), parameter :: r = 1.234_dp
+  real(kind=dp), parameter :: r = 1.234_dp, pi = 3.14159265358979_dp
   real(kind=dp), dimension(L,L,2) :: box ! 2500 point grid containing
                                         ! coordinates of packed circles
   logical, dimension(L,L) :: occupied
-  real(kind=dp) :: x, y, D, P
+  real(kind=dp) :: x, y, D
   logical :: pack
-  integer :: i, j, k, cellx, celly, left, right, above, below
+  integer :: i, j, k, N_circ, cellx, celly, left, right, above, below, ios
   type(rng_t):: rng   ! custom type for random number generator
 
   ! set occupation status of box as empty
   occupied = .false.
   box = 0.0_dp
 
+  ! open file to write segment to
+  open(unit=11, file='segment.dat', status='unknown', iostat=ios)
+  if ( ios /= 0 ) stop "Error opening file segment.dat"
+
+  open(unit=22, file='packingfrac.dat', status='unknown', iostat=ios)
+  if ( ios /= 0 ) stop "Error opening file packingfrac.dat"
+
   ! random number seed
-  call rng_seed(rng, 521288629)
+  call rng_seed(rng, 362436069)
+  N_circ = 0
   do i = 1, 1000000000
     ! generate new random coordinates within the box
     x = (L-2*r) * rng_uniform(rng) + r
@@ -148,7 +156,7 @@ program packing
           ! abandon coords if the distance between the two circles is too small
           if ( D < (2*r)**2 ) then
             pack = .false.
-            exit
+            exit !add ability to exit both loops
           endif
         end if
       end do
@@ -157,22 +165,39 @@ program packing
     ! if there is room for the circle, add it to the box
     if ( pack ) then
       ! print *, "Circle added", x, y
+      N_circ = N_circ + 1
       occupied(int(x), int(y)) = .true.
       box(int(x), int(y), 1) = x
       box(int(x), int(y), 2) = y
+      if ( (int(x) < 14) .and. (int(y) < 14)) then
+        write(unit=11, fmt=*, iostat=ios) x, y
+        if ( ios /= 0 ) stop "Write error in file unit 11"
+      end if
+      ! if ( i > 100000000) print*, i
     end if
+
+    ! every 10,000 steps, write number of trial circle placements and value of P
+      if ( modulo(i,10000) == 0 ) then
+        write(unit=22, fmt=*, iostat=ios) i, pi*N_circ*r**2/L**2
+        if ( ios /= 0 ) stop "Write error in file unit 22"
+      endif
   end do
 
-  do i = 1,13
-    do j = 1, 13
-      ! print all nonzero values to terminal
-      if (box(i,j,1) > r) print*, box(i,j,1), box(i,j,2)
-    end do
-  end do
+  ! write the final packing fraction and print to terminal
+  write(unit=22, fmt=*, iostat=ios) i, pi*N_circ*r**2/L**2
+  print*, pi*N_circ*r**2/L**2
+
+  ! random packings have 55-64% packing fractions
+  ! ideal packing of circles is 0.9069
+
+  close(unit=11, iostat=ios)
+  if ( ios /= 0 ) stop "Error closing file unit 11"
+
+  close(unit=22, iostat=ios)
+  if ( ios /= 0 ) stop "Error closing file unit 22"
 
   ! to plot on gnuplot:
-  ! ./a.out > segment.dat
-  ! gnuplot> set style circle radius 0.617
+  ! gnuplot> set style circle radius 1.234
   ! gnuplot> plot 'segment.dat' with circles
 
 end program
