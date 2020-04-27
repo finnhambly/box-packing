@@ -234,16 +234,16 @@ program packing
       if (ierr/=0) stop 'Error with MPI_Irecv reqL2'
 
       ! Set arrays back to true values, while these coordinates are tested
-      if (int(x) < 7) then
+      ! if (int(x) < 7) then
         ! Ensure data has been sent
-        call MPI_wait(sreqL1,sL1status,ierr)
-        if (ierr/=0) stop 'Error with MPI_wait sreqL1'
-        call MPI_wait(sreqL2,sL2status,ierr)
-        if (ierr/=0) stop 'Error with MPI_wait sreqL2'
-        occupied(int(x), int(y)) = .false.
-        box(int(x), int(y), 1) = 0.0_dp
-        box(int(x), int(y), 2) = 0.0_dp
-      endif
+        ! call MPI_wait(sreqL1,sL1status,ierr)
+        ! if (ierr/=0) stop 'Error with MPI_wait sreqL1'
+        ! call MPI_wait(sreqL2,sL2status,ierr)
+        ! if (ierr/=0) stop 'Error with MPI_wait sreqL2'
+      !   occupied(int(x), int(y)) = .false.
+      !   box(int(x), int(y), 1) = 0.0_dp
+      !   box(int(x), int(y), 2) = 0.0_dp
+      ! endif
     end if
 
     ! Update right halo
@@ -368,10 +368,15 @@ program packing
     ! Left
     if (mod(rank+1, x_div) /= 1) then
       ! Check array 1 has sent
-      call MPI_Test(sreqL1,sent,sL1status,ierr)
-      if (.not. sent) then
+      ! call MPI_Test(sreqL1,sent,sL1status,ierr)
+      ! if (.not. sent) then
         call MPI_wait(sreqL1,sL1status,ierr)
         if (ierr/=0) stop 'Error with MPI_wait sreqL1'
+      ! endif
+      if (int(x) < 7) then
+        occupied(int(x), int(y)) = .false.
+        box(int(x), int(y), 1) = 0.0_dp
+        box(int(x), int(y), 2) = 0.0_dp
       endif
 
       ! Check array 2 has sent
