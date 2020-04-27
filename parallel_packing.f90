@@ -234,16 +234,16 @@ program packing
       if (ierr/=0) stop 'Error with MPI_Irecv reqL2'
 
       ! Set arrays back to true values, while these coordinates are tested
-      if (int(x) < 7) then
-        ! Ensure data has been sent
-        call MPI_wait(sreqL1,sL1status,ierr)
-        if (ierr/=0) stop 'Error with MPI_wait sreqL1'
-        call MPI_wait(sreqL2,sL2status,ierr)
-        if (ierr/=0) stop 'Error with MPI_wait sreqL2'
-        occupied(int(x), int(y)) = .false.
-        box(int(x), int(y), 1) = 0.0_dp
-        box(int(x), int(y), 2) = 0.0_dp
-      endif
+      ! if (int(x) < 7) then
+      !   ! Ensure data has been sent
+      !   call MPI_wait(sreqL1,sL1status,ierr)
+      !   if (ierr/=0) stop 'Error with MPI_wait sreqL1'
+      !   call MPI_wait(sreqL2,sL2status,ierr)
+      !   if (ierr/=0) stop 'Error with MPI_wait sreqL2'
+      !   occupied(int(x), int(y)) = .false.
+      !   box(int(x), int(y), 1) = 0.0_dp
+      !   box(int(x), int(y), 2) = 0.0_dp
+      ! endif
     end if
 
     ! Update right halo
@@ -273,16 +273,16 @@ program packing
       & rank+1, 2, MPI_comm_world, reqR2, ierr)
       if (ierr/=0) stop 'Error with MPI_Irecv reqR2'
 
-      ! Set arrays back to true values, while these coordinates are tested
-      if (int(x) > x_max) then
-        call MPI_wait(sreqR1,sR1status,ierr)
-        if (ierr/=0) stop 'Error with MPI_wait sreqR1'
-        call MPI_wait(sreqR2,sR2status,ierr)
-        if (ierr/=0) stop 'Error with MPI_wait sreqR2'
-        occupied(int(x), int(y)) = .false.
-        box(int(x), int(y), 1) = 0.0_dp
-        box(int(x), int(y), 2) = 0.0_dp
-      endif
+      ! ! Set arrays back to true values, while these coordinates are tested
+      ! if (int(x) > x_max) then
+      !   call MPI_wait(sreqR1,sR1status,ierr)
+      !   if (ierr/=0) stop 'Error with MPI_wait sreqR1'
+      !   call MPI_wait(sreqR2,sR2status,ierr)
+      !   if (ierr/=0) stop 'Error with MPI_wait sreqR2'
+      !   occupied(int(x), int(y)) = .false.
+      !   box(int(x), int(y), 1) = 0.0_dp
+      !   box(int(x), int(y), 2) = 0.0_dp
+      ! endif
     end if
 
     ! Update top halo
@@ -312,16 +312,16 @@ program packing
       & rank+x_div, 8, MPI_comm_world, reqT2, ierr)
       if (ierr/=0) stop 'Error with MPI_Irecv reqT2'
 
-      ! Set arrays back to true values, while these coordinates are tested
-      if (int(y) > y_max) then
-        call MPI_wait(sreqT1,sT1status,ierr)
-        if (ierr/=0) stop 'Error with MPI_wait sreqT1'
-        call MPI_wait(sreqT2,sT2status,ierr)
-        if (ierr/=0) stop 'Error with MPI_wait sreqT2'
-        occupied(int(x), int(y)) = .false.
-        box(int(x), int(y), 1) = 0.0_dp
-        box(int(x), int(y), 2) = 0.0_dp
-      endif
+      ! ! Set arrays back to true values, while these coordinates are tested
+      ! if (int(y) > y_max) then
+      !   call MPI_wait(sreqT1,sT1status,ierr)
+      !   if (ierr/=0) stop 'Error with MPI_wait sreqT1'
+      !   call MPI_wait(sreqT2,sT2status,ierr)
+      !   if (ierr/=0) stop 'Error with MPI_wait sreqT2'
+      !   occupied(int(x), int(y)) = .false.
+      !   box(int(x), int(y), 1) = 0.0_dp
+      !   box(int(x), int(y), 2) = 0.0_dp
+      ! endif
     end if
 
     ! Update bottom halos
@@ -352,6 +352,121 @@ program packing
       if (ierr/=0) stop 'Error with MPI_Irecv reqB2'
 
       ! Set arrays back to true values, while these coordinates are tested
+      ! if (int(x) < 7) then
+      !   ! Ensure data has been sent
+      !   call MPI_wait(sreqB1,sB1status,ierr)
+      !   if (ierr/=0) stop 'Error with MPI_wait sreqB1'
+      !   call MPI_wait(sreqB2,sB2status,ierr)
+      !   if (ierr/=0) stop 'Error with MPI_wait sreqB2'
+      !   occupied(int(x), int(y)) = .false.
+      !   box(int(x), int(y), 1) = 0.0_dp
+      !   box(int(x), int(y), 2) = 0.0_dp
+      ! end if
+    end if
+
+    ! Ensure all data has been received
+    ! Left
+    if (mod(rank+1, x_div) /= 1) then
+      ! Check array 1 has sent
+      call MPI_wait(sreqL1,sL1status,ierr)
+      if (ierr/=0) stop 'Error with MPI_wait sreqL1'
+
+      ! Check array 2 has sent
+      call MPI_wait(sreqL2,sL2status,ierr)
+      if (ierr/=0) stop 'Error with MPI_wait sreqL2'
+
+      ! Ensure array 1 is received
+      call MPI_wait(reqL1,rL1status,ierr)
+      if (ierr/=0) stop 'Error with MPI_wait reqL1'
+      ! Ensure array 2 is received
+      call MPI_wait(reqL2,rL2status,ierr)
+      if (ierr/=0) stop 'Error with MPI_wait reqL2'
+
+      ! unblock region around test coordinates (when near edge)
+      if (int(x) < 7) then
+        ! Ensure data has been sent
+        call MPI_wait(sreqL1,sL1status,ierr)
+        if (ierr/=0) stop 'Error with MPI_wait sreqL1'
+        call MPI_wait(sreqL2,sL2status,ierr)
+        if (ierr/=0) stop 'Error with MPI_wait sreqL2'
+        occupied(int(x), int(y)) = .false.
+        box(int(x), int(y), 1) = 0.0_dp
+        box(int(x), int(y), 2) = 0.0_dp
+      endif
+    endif
+
+    ! Right
+    if (mod(rank+1, x_div) /= 0) then
+      ! Check array 1 has sent
+      call MPI_wait(sreqR1,sR1status,ierr)
+      if (ierr/=0) stop 'Error with MPI_wait sreqR1'
+      ! Check array 2 has sent
+      call MPI_wait(sreqR2,sR2status,ierr)
+      if (ierr/=0) stop 'Error with MPI_wait sreqR2'
+
+      ! Ensure array 1 is received
+      call MPI_wait(reqR1,rR1status,ierr)
+      if (ierr/=0) stop 'Error with MPI_wait reqR1'
+      ! Ensure array 2 is received
+      call MPI_wait(reqR2,rR2status,ierr)
+      if (ierr/=0) stop 'Error with MPI_wait reqR2'
+
+      ! unblock region around test coordinates (when near edge)
+      if (int(x) > x_max) then
+        call MPI_wait(sreqR1,sR1status,ierr)
+        if (ierr/=0) stop 'Error with MPI_wait sreqR1'
+        call MPI_wait(sreqR2,sR2status,ierr)
+        if (ierr/=0) stop 'Error with MPI_wait sreqR2'
+        occupied(int(x), int(y)) = .false.
+        box(int(x), int(y), 1) = 0.0_dp
+        box(int(x), int(y), 2) = 0.0_dp
+      endif
+    endif
+
+    ! Top
+    if (rank+1 <= size - x_div) then
+      ! Check array 1 has sent
+      call MPI_wait(sreqT1,sT1status,ierr)
+      if (ierr/=0) stop 'Error with MPI_wait sreqT1'
+      ! Check array 2 has sent
+      call MPI_wait(sreqT2,sT2status,ierr)
+      if (ierr/=0) stop 'Error with MPI_wait sreqT2'
+
+      ! Ensure array 1 is received
+      call MPI_wait(reqT1,rT1status,ierr)
+      if (ierr/=0) stop 'Error with MPI_wait reqT1'
+      ! Ensure array 2 is received
+      call MPI_wait(reqT2,rT2status,ierr)
+      if (ierr/=0) stop 'Error with MPI_wait reqT2'
+
+      ! Set arrays back to true values, while these coordinates are tested
+      if (int(y) > y_max) then
+        call MPI_wait(sreqT1,sT1status,ierr)
+        if (ierr/=0) stop 'Error with MPI_wait sreqT1'
+        call MPI_wait(sreqT2,sT2status,ierr)
+        if (ierr/=0) stop 'Error with MPI_wait sreqT2'
+        occupied(int(x), int(y)) = .false.
+        box(int(x), int(y), 1) = 0.0_dp
+        box(int(x), int(y), 2) = 0.0_dp
+      endif
+    endif
+
+    ! Bottom
+    if (rank+1 > x_div) then
+      ! Check array 1 has sent
+      call MPI_wait(sreqB1,sB1status,ierr)
+      if (ierr/=0) stop 'Error with MPI_wait sreqB1'
+      ! Check array 2 has sent
+      call MPI_wait(sreqB2,sB2status,ierr)
+      if (ierr/=0) stop 'Error with MPI_wait sreqB2'
+
+      ! Ensure array 1 is received
+      call MPI_wait(reqB1,rB1status,ierr)
+      if (ierr/=0) stop 'Error with MPI_wait reqB1'
+      ! Ensure array 2 is received
+      call MPI_wait(reqB2,rB2status,ierr)
+      if (ierr/=0) stop 'Error with MPI_wait reqB2'
+
       if (int(x) < 7) then
         ! Ensure data has been sent
         call MPI_wait(sreqB1,sB1status,ierr)
@@ -362,100 +477,6 @@ program packing
         box(int(x), int(y), 1) = 0.0_dp
         box(int(x), int(y), 2) = 0.0_dp
       end if
-    end if
-
-    ! Ensure all data has been received
-    ! Left
-    if (mod(rank+1, x_div) /= 1) then
-      ! Check array 1 has sent
-      call MPI_Test(sreqL1,sent,sL1status,ierr)
-      if (.not. sent) then
-        call MPI_wait(sreqL1,sL1status,ierr)
-        if (ierr/=0) stop 'Error with MPI_wait sreqL1'
-      endif
-
-      ! Check array 2 has sent
-      call MPI_Test(sreqL2,sent,sL2status,ierr)
-      if (.not. sent) then
-        call MPI_wait(sreqL2,sL2status,ierr)
-        if (ierr/=0) stop 'Error with MPI_wait sreqL2'
-      endif
-
-      ! Ensure array 1 is received
-      call MPI_wait(reqL1,rL1status,ierr)
-      if (ierr/=0) stop 'Error with MPI_wait reqL1'
-      ! Ensure array 2 is received
-      call MPI_wait(reqL2,rL2status,ierr)
-      if (ierr/=0) stop 'Error with MPI_wait reqL2'
-    endif
-
-    ! Right
-    if (mod(rank+1, x_div) /= 0) then
-      ! Check array 1 has sent
-      call MPI_Test(sreqR1,sent,sR1status,ierr)
-      if (.not. sent) then
-        call MPI_wait(sreqR1,sR1status,ierr)
-        if (ierr/=0) stop 'Error with MPI_wait sreqR1'
-      endif
-      ! Check array 2 has sent
-      call MPI_Test(sreqR2,sent,sR2status,ierr)
-      if (.not. sent) then
-        call MPI_wait(sreqR2,sR2status,ierr)
-        if (ierr/=0) stop 'Error with MPI_wait sreqR2'
-      endif
-
-      ! Ensure array 1 is received
-      call MPI_wait(reqR1,rR1status,ierr)
-      if (ierr/=0) stop 'Error with MPI_wait reqR1'
-      ! Ensure array 2 is received
-      call MPI_wait(reqR2,rR2status,ierr)
-      if (ierr/=0) stop 'Error with MPI_wait reqR2'
-    endif
-
-    ! Top
-    if (rank+1 <= size - x_div) then
-      ! Check array 1 has sent
-      call MPI_Test(sreqT1,sent,sT1status,ierr)
-      if (.not. sent) then
-        call MPI_wait(sreqT1,sT1status,ierr)
-        if (ierr/=0) stop 'Error with MPI_wait sreqT1'
-      endif
-      ! Check array 2 has sent
-      call MPI_Test(sreqT2,sent,sT2status,ierr)
-      if (.not. sent) then
-        call MPI_wait(sreqT2,sT2status,ierr)
-        if (ierr/=0) stop 'Error with MPI_wait sreqT2'
-      endif
-
-      ! Ensure array 1 is received
-      call MPI_wait(reqT1,rT1status,ierr)
-      if (ierr/=0) stop 'Error with MPI_wait reqT1'
-      ! Ensure array 2 is received
-      call MPI_wait(reqT2,rT2status,ierr)
-      if (ierr/=0) stop 'Error with MPI_wait reqT2'
-    endif
-
-    ! Bottom
-    if (rank+1 > x_div) then
-      ! Check array 1 has sent
-      call MPI_Test(sreqB1,sent,sB1status,ierr)
-      if (.not. sent) then
-        call MPI_wait(sreqB1,sB1status,ierr)
-        if (ierr/=0) stop 'Error with MPI_wait sreqB1'
-      endif
-      ! Check array 2 has sent
-      call MPI_Test(sreqB2,sent,sB2status,ierr)
-      if (.not. sent) then
-        call MPI_wait(sreqB2,sB2status,ierr)
-        if (ierr/=0) stop 'Error with MPI_wait sreqB2'
-      endif
-
-      ! Ensure array 1 is received
-      call MPI_wait(reqB1,rB1status,ierr)
-      if (ierr/=0) stop 'Error with MPI_wait reqB1'
-      ! Ensure array 2 is received
-      call MPI_wait(reqB2,rB2status,ierr)
-      if (ierr/=0) stop 'Error with MPI_wait reqB2'
     endif
 
     ! If there are circles nearby, see if the new circle will fit next to it
