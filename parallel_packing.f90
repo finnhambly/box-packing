@@ -90,7 +90,6 @@ program packing
   type(rng_t):: rng   ! custom type for random number generator
   ! MPI variables
   integer :: size, rank, x_div, y_div, x_max, y_max
-  logical :: sent
   integer :: reqL1,reqL2,reqR1,reqR2,reqB1,reqB2,reqT1,reqT2
   integer :: sreqL1,sreqL2,sreqR1,sreqR2,sreqB1,sreqB2,sreqT1,sreqT2
   integer, dimension(1:MPI_STATUS_SIZE) :: sL1status,sL2status,sR1status, &
@@ -105,6 +104,12 @@ program packing
   if (ierr/=0) stop 'Error with MPI_comm_rank'
   call MPI_comm_size(MPI_comm_world,size,ierr)
   if (ierr/=0) stop 'Error with MPI_comm_size'
+
+  ! Open file for visualising placement
+  if ( rank == 0 ) then
+    open(unit=11, file='segment.dat', status='replace', iostat=ios)
+    if ( ios /= 0 ) stop "Error opening file segment.dat"
+  endif
 
   1 format('Error: number of threads,',i4,', larger than array size',i8)
   if ( size > L**2 ) then
@@ -150,23 +155,6 @@ program packing
   ! set occupation status of box as empty
   box = 0.0_dp
   occupied = .false.
-  ! ! set the far left as out-of-bounds
-  ! if (mod(rank+1, x_div) == 1) then
-  !   occupied(1:3,:) = .true.
-  !   ! SET BOX(1:3,:,:) = 2*L FOR ALL IF I NEED THIS
-  ! end if
-  ! ! set the far right as out-of-bounds
-  ! if (mod(rank+1, x_div) == 0) then
-  !   occupied(x_max+4:x_max+6,:) = .true.
-  ! end if
-  ! ! set the top as out-of-bounds
-  ! if (rank+1 > size - x_div) then
-  !   occupied(:,y_max+3:y_max+6) = .true.
-  ! end if
-  ! ! set the bottom as out-of-bounds
-  ! if (rank+1 <= x_div) then
-  !   occupied(:,1:3) = .true.
-  ! end if
 
   ! random number seed
   call rng_seed(rng, 362436069+3624*rank)
@@ -189,23 +177,16 @@ program packing
       y = y_max * rng_uniform(rng) + 4 ! otherwise, allow overlap with halo
     end if
 
-    print*, "Testing x=", int(x), "and y=", int(y)
-
     ! set boolean test to default value
     pack = .true.
 
     ! if grid point already occupied, then skip these coordinates
     if (occupied(int(x),int(y))) cycle
 
-    ! If not on the edge of the box - testing nearest neighbours
-    ! at the edges would require comms, which is counterproductive
-    ! since this is designed to be a quick check.
-    if ( (int(x) /= 4) .and. (int(x) /= x_max + 4) &
-    .and. (int(y) /= 4) .and. (int(y) /= y_max + 4) ) then
-    ! ...look and, if nearest neighbours are occupied, skip
-      if ( occupied(int(x)+1,int(y)) .or. occupied(int(x)-1,int(y)) .or. &
-      occupied(int(x),int(y)+1) .or. occupied(int(x),int(y)-1)) cycle
-    endif
+    ! Not exhaustive check but skips any that will definitely not fit
+    ! Look and, if nearest neighbours are occupied, skip:
+    if ( occupied(int(x)+1,int(y)) .or. occupied(int(x)-1,int(y)) .or. &
+    occupied(int(x),int(y)+1) .or. occupied(int(x),int(y)-1)) cycle
 
     ! Update left halos
     if (mod(rank+1, x_div) /= 1) then
@@ -232,18 +213,6 @@ program packing
       call MPI_Irecv(occupied(1:3,1), 3*(y_max+6), MPI_LOGICAL, &
       & rank-1, 4, MPI_comm_world, reqL2, ierr)
       if (ierr/=0) stop 'Error with MPI_Irecv reqL2'
-
-      ! Set arrays back to true values, while these coordinates are tested
-      ! if (int(x) < 7) then
-      !   ! Ensure data has been sent
-      !   call MPI_wait(sreqL1,sL1status,ierr)
-      !   if (ierr/=0) stop 'Error with MPI_wait sreqL1'
-      !   call MPI_wait(sreqL2,sL2status,ierr)
-      !   if (ierr/=0) stop 'Error with MPI_wait sreqL2'
-      !   occupied(int(x), int(y)) = .false.
-      !   box(int(x), int(y), 1) = 0.0_dp
-      !   box(int(x), int(y), 2) = 0.0_dp
-      ! endif
     end if
 
     ! Update right halo
@@ -268,21 +237,10 @@ program packing
       call MPI_Irecv(box(x_max+4:x_max+6,1,1), 6*(y_max+6), MPI_DOUBLE_PRECISION, &
       & rank+1, 1, MPI_comm_world, reqR1, ierr)
       if (ierr/=0) stop 'Error with MPI_Irecv reqR1'
-      ! Receive occupation data from the left
+      ! Receive occupation data from the right
       call MPI_Irecv(occupied(x_max+4:x_max+6,1), 3*(y_max+6), MPI_LOGICAL, &
       & rank+1, 2, MPI_comm_world, reqR2, ierr)
       if (ierr/=0) stop 'Error with MPI_Irecv reqR2'
-
-      ! ! Set arrays back to true values, while these coordinates are tested
-      ! if (int(x) > x_max) then
-      !   call MPI_wait(sreqR1,sR1status,ierr)
-      !   if (ierr/=0) stop 'Error with MPI_wait sreqR1'
-      !   call MPI_wait(sreqR2,sR2status,ierr)
-      !   if (ierr/=0) stop 'Error with MPI_wait sreqR2'
-      !   occupied(int(x), int(y)) = .false.
-      !   box(int(x), int(y), 1) = 0.0_dp
-      !   box(int(x), int(y), 2) = 0.0_dp
-      ! endif
     end if
 
     ! Update top halo
@@ -311,17 +269,6 @@ program packing
       call MPI_Irecv(occupied(:,y_max+4:y_max+6), 3*(x_max+6), MPI_LOGICAL, &
       & rank+x_div, 8, MPI_comm_world, reqT2, ierr)
       if (ierr/=0) stop 'Error with MPI_Irecv reqT2'
-
-      ! ! Set arrays back to true values, while these coordinates are tested
-      ! if (int(y) > y_max) then
-      !   call MPI_wait(sreqT1,sT1status,ierr)
-      !   if (ierr/=0) stop 'Error with MPI_wait sreqT1'
-      !   call MPI_wait(sreqT2,sT2status,ierr)
-      !   if (ierr/=0) stop 'Error with MPI_wait sreqT2'
-      !   occupied(int(x), int(y)) = .false.
-      !   box(int(x), int(y), 1) = 0.0_dp
-      !   box(int(x), int(y), 2) = 0.0_dp
-      ! endif
     end if
 
     ! Update bottom halos
@@ -342,26 +289,14 @@ program packing
       & rank-x_div, 8, MPI_comm_world, sreqB2, ierr)
       if (ierr/=0) stop 'Error with MPI_Issend sreqB2'
 
-      ! Receive coordinate data from the below
+      ! Receive coordinate data from below
       call MPI_Irecv(box(:,1:3,1), 6*(x_max+6), MPI_DOUBLE_PRECISION, &
       & rank-x_div, 5, MPI_comm_world, reqB1, ierr)
       if (ierr/=0) stop 'Error with MPI_Irecv reqB1'
-      ! Receive occupation data from the left
+      ! Receive occupation data from below
       call MPI_Irecv(occupied(:,1:3), 3*(x_max+6), MPI_LOGICAL, &
       & rank-x_div, 6, MPI_comm_world, reqB2, ierr)
       if (ierr/=0) stop 'Error with MPI_Irecv reqB2'
-
-      ! Set arrays back to true values, while these coordinates are tested
-      ! if (int(x) < 7) then
-      !   ! Ensure data has been sent
-      !   call MPI_wait(sreqB1,sB1status,ierr)
-      !   if (ierr/=0) stop 'Error with MPI_wait sreqB1'
-      !   call MPI_wait(sreqB2,sB2status,ierr)
-      !   if (ierr/=0) stop 'Error with MPI_wait sreqB2'
-      !   occupied(int(x), int(y)) = .false.
-      !   box(int(x), int(y), 1) = 0.0_dp
-      !   box(int(x), int(y), 2) = 0.0_dp
-      ! end if
     end if
 
     ! Ensure all data has been received
@@ -384,11 +319,6 @@ program packing
 
       ! unblock region around test coordinates (when near edge)
       if (int(x) < 7) then
-        ! Ensure data has been sent
-        call MPI_wait(sreqL1,sL1status,ierr)
-        if (ierr/=0) stop 'Error with MPI_wait sreqL1'
-        call MPI_wait(sreqL2,sL2status,ierr)
-        if (ierr/=0) stop 'Error with MPI_wait sreqL2'
         occupied(int(x), int(y)) = .false.
         box(int(x), int(y), 1) = 0.0_dp
         box(int(x), int(y), 2) = 0.0_dp
@@ -413,10 +343,6 @@ program packing
 
       ! unblock region around test coordinates (when near edge)
       if (int(x) > x_max) then
-        call MPI_wait(sreqR1,sR1status,ierr)
-        if (ierr/=0) stop 'Error with MPI_wait sreqR1'
-        call MPI_wait(sreqR2,sR2status,ierr)
-        if (ierr/=0) stop 'Error with MPI_wait sreqR2'
         occupied(int(x), int(y)) = .false.
         box(int(x), int(y), 1) = 0.0_dp
         box(int(x), int(y), 2) = 0.0_dp
@@ -441,10 +367,6 @@ program packing
 
       ! Set arrays back to true values, while these coordinates are tested
       if (int(y) > y_max) then
-        call MPI_wait(sreqT1,sT1status,ierr)
-        if (ierr/=0) stop 'Error with MPI_wait sreqT1'
-        call MPI_wait(sreqT2,sT2status,ierr)
-        if (ierr/=0) stop 'Error with MPI_wait sreqT2'
         occupied(int(x), int(y)) = .false.
         box(int(x), int(y), 1) = 0.0_dp
         box(int(x), int(y), 2) = 0.0_dp
@@ -467,12 +389,7 @@ program packing
       call MPI_wait(reqB2,rB2status,ierr)
       if (ierr/=0) stop 'Error with MPI_wait reqB2'
 
-      if (int(x) < 7) then
-        ! Ensure data has been sent
-        call MPI_wait(sreqB1,sB1status,ierr)
-        if (ierr/=0) stop 'Error with MPI_wait sreqB1'
-        call MPI_wait(sreqB2,sB2status,ierr)
-        if (ierr/=0) stop 'Error with MPI_wait sreqB2'
+      if (int(y) < 7) then
         occupied(int(x), int(y)) = .false.
         box(int(x), int(y), 1) = 0.0_dp
         box(int(x), int(y), 2) = 0.0_dp
@@ -502,16 +419,16 @@ program packing
 
     ! If there is room for the circle, add it to the box
     if ( pack ) then
-      print *, "Circle added", x, y, "on rank", rank
+      ! print *, "Circle added", x, y, "on rank", rank
       N_circ = N_circ + 1
       occupied(int(x), int(y)) = .true.
       box(int(x), int(y), 1) = x
       box(int(x), int(y), 2) = y
       ! check it is working
-      ! if ( (int(x) < 14) .and. (int(y) < 14)) then
-      !   write(unit=11, fmt=*, iostat=ios) x, y
-      !   if ( ios /= 0 ) stop "Write error in file unit 11"
-      ! end if
+      if (rank == 0 ) then
+        write(unit=11, fmt=*, iostat=ios) x, y
+        if ( ios /= 0 ) stop "Write error in file unit 11"
+      end if
       ! if ( i > 100000000) print*, i
     end if
 
@@ -532,6 +449,12 @@ program packing
   ! to plot on gnuplot:
   ! gnuplot> set style circle radius 1.234
   ! gnuplot> plot 'segment.dat' with circles
+
+  ! Close data file
+  if ( rank == 0 ) then
+    close(unit=11, iostat=ios)
+    if ( ios /= 0 ) stop "Error closing file unit 11"
+  endif
 
   if (allocated(box)) deallocate(box, stat=ierr)
   if ( ierr /= 0) print *, "box: Deallocation request denied"
