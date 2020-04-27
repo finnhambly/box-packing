@@ -120,7 +120,7 @@ program packing
 
   ! Decompose problem according to the number of threads
   ! Divide box into squares, or near rectangles if not possible
-  x_div = nint(sqrt(real(size)))
+  x_div = ceiling(sqrt(real(size)))
   if ( mod(size,x_div) == 0 ) then
     y_div = size/x_div ! 2D decomposition
   else ! Resort to 1D decomposition if 2D is not possible
@@ -161,18 +161,22 @@ program packing
   N_circ = 0
   do i = 1, 10000000
     ! generate new random coordinates within the box, depending on rank
-    if (mod(rank+1, x_div) == 1) then ! if on the far left
-      x = (x_max-r) * rng_uniform(rng) + r + 4 ! do not place over the edge
+    if ((mod(rank+1, x_div) == 1) .and. (mod(rank+1, x_div) == 0)) then
+      x = (x_max-2*r) * rng_uniform(rng) + r + 4 ! do not place over the edge
+    else if (mod(rank+1, x_div) == 1) then ! if on the far left
+      x = (x_max-r) * rng_uniform(rng) + r + 4 ! do not place over left edge
     else if (mod(rank+1, x_div) == 0) then ! if on the far right
-      x = (x_max-r) * rng_uniform(rng) + 4 ! do not place over the edge
+      x = (x_max-r) * rng_uniform(rng) + 4 ! do not place over right edge
     else
       x = x_max * rng_uniform(rng) + 4 !otherwise, allow overlap with halo
     end if
 
-    if (rank+1 > size - x_div) then ! if at the top
-      y = (y_max-r) * rng_uniform(rng) + 4 ! do not place over the edge
+    if ((rank+1 > size - x_div) .and. (rank+1 <= x_div)) then ! top and bottom:
+      y = (y_max-2*r) * rng_uniform(rng) + r + 4 ! do not place over edge
+    else if (rank+1 > size - x_div) then ! if at the top
+      y = (y_max-r) * rng_uniform(rng) + 4 ! do not place over top edge
     else if (rank+1 <= x_div) then !if at the bottom
-      y = (y_max-r) * rng_uniform(rng) + r + 4 ! do not place over the edge
+      y = (y_max-r) * rng_uniform(rng) + r + 4 ! do not place over bottom edge
     else
       y = y_max * rng_uniform(rng) + 4 ! otherwise, allow overlap with halo
     end if
@@ -425,7 +429,7 @@ program packing
       box(int(x), int(y), 1) = x
       box(int(x), int(y), 2) = y
       ! check it is working
-      if (rank == 0 ) then
+      if ( rank == 0 .and. (int(x) < 50) .and. (int(y) < 50) ) then
         write(unit=11, fmt=*, iostat=ios) x, y
         if ( ios /= 0 ) stop "Write error in file unit 11"
       end if
