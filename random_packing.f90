@@ -90,10 +90,13 @@ program packing
   type(rng_t):: rng   ! custom type for random number generator
   ! MPI variables
   integer :: size, rank, x_div, y_div, x_max, y_max
-  logical :: send_left, send_right, send_above, send_below
+  logical :: sent
   integer :: reqL1,reqL2,reqR1,reqR2,reqB1,reqB2,reqT1,reqT2
   integer :: sreqL1,sreqL2,sreqR1,sreqR2,sreqB1,sreqB2,sreqT1,sreqT2
-  integer, dimension(1:MPI_STATUS_SIZE) :: rLstatus,rRstatus,sLstatus,sRstatus
+  integer, dimension(1:MPI_STATUS_SIZE) :: sL1status,sL2status,sR1status, &
+    sR2status, sT1status, sT2status, sB1status, sB2status, &
+    rL1status,rL2status,rR1status, rR2status, rT1status, rT2status, rB1status,&
+    rB2status
   real(kind=dp) :: start_time, stop_time
   integer, allocatable :: array(:), dimensions(:,:)
 
@@ -104,9 +107,6 @@ program packing
   if (ierr/=0) stop 'Error with MPI_comm_rank'
   call MPI_comm_size(MPI_comm_world,size,ierr)
   if (ierr/=0) stop 'Error with MPI_comm_size'
-
-  12 format('My thread number is',i4)
-  print 12, rank
 
   1 format('Error: number of threads,',i4,', larger than array size',i8)
   if ( size > L**2 ) then
@@ -128,7 +128,6 @@ program packing
     x_div = size
     y_div = 1
   endif
-  print*, y_div
 
   ! Allocate number of grid points to each thread, adding leftovers to the
   ! far ends
@@ -180,20 +179,20 @@ program packing
   N_circ = 0
   do i = 1, 10000000
     ! generate new random coordinates within the box, depending on rank
-    if (mod(rank+1, x_div) == 1) then
-      x = (x_max-r) * rng_uniform(rng) + r + 3
-    else if (mod(rank+1, x_div) == 0) then
-      x = (x_max-r) * rng_uniform(rng) + 3
+    if (mod(rank+1, x_div) == 1) then ! if on the far left
+      x = (x_max-r) * rng_uniform(rng) + r + 4 ! do not place over the edge
+    else if (mod(rank+1, x_div) == 0) then ! if on the far right
+      x = (x_max-r) * rng_uniform(rng) + 4 ! do not place over the edge
     else
-      x = x_max * rng_uniform(rng) + 3
+      x = x_max * rng_uniform(rng) + 4 !otherwise, allow overlap with halo
     end if
 
-    if (rank+1 > size - x_div) then
-      y = (y_max-r) * rng_uniform(rng) + 3
-    else if (rank+1 <= x_div) then
-      y = (y_max-r) * rng_uniform(rng) + r + 3
+    if (rank+1 > size - x_div) then ! if at the top
+      y = (y_max-r) * rng_uniform(rng) + 4 ! do not place over the edge
+    else if (rank+1 <= x_div) then !if at the bottom
+      y = (y_max-r) * rng_uniform(rng) + r + 4 ! do not place over the edge
     else
-      y = y_max * rng_uniform(rng) + 3
+      y = y_max * rng_uniform(rng) + 4 ! otherwise, allow overlap with halo
     end if
 
     ! set boolean test to default value
@@ -205,141 +204,267 @@ program packing
     ! If not on the edge of the box - testing nearest neighbours
     ! at the edges would require comms, which is counterproductive
     ! since this is designed to be a quick check.
-    if ( (int(x) /= 3) .and. (int(x) /= x_max + 3) &
-    .and. (int(y) /= 3) .and. (int(y) /= y_max + 3) ) then
+    if ( (int(x) /= 4) .and. (int(x) /= x_max + 4) &
+    .and. (int(y) /= 3) .and. (int(y) /= y_max + 4) ) then
     ! ...look and, if nearest neighbours are occupied, skip
       if ( occupied(int(x)+1,int(y)) .or. occupied(int(x)-1,int(y)) .or. &
       occupied(int(x),int(y)+1) .or. occupied(int(x),int(y)-1)) cycle
     endif
 
-    ! Check if left halo needs updating
-    if ((int(x) < 7) .and. (mod(rank+1, x_div) /= 1)) then
-      ! Cordon off this point
-      occupied(int(x), int(y)) = .true.
-      box(int(x), int(y), 1) = x
-      box(int(x), int(y), 2) = y
+    ! Update left halos
+    if (mod(rank+1, x_div) /= 1) then
+      if (int(x) < 7) then! Cordon off this point
+        occupied(int(x), int(y)) = .true.
+        box(int(x), int(y), 1) = x
+        box(int(x), int(y), 2) = y
+      endif
 
       ! Send coordinate data
-      call MPI_Issend(box(4:6,:,:),3*(y_max+6), MPI_DOUBLE_PRECISION, &
+      call MPI_Isend(box(4:6,:,:),6*(y_max+6), MPI_DOUBLE_PRECISION, &
       & rank-1, 1, MPI_comm_world, sreqL1, ierr)
-      if (ierr/=0) stop 'Error with MPI_issend sreqL1'
+      if (ierr/=0) stop 'Error with MPI_Isend sreqL1'
       ! Send occupation data
-      call MPI_Issend(occupied(4:6,:), 3*(y_max+6), MPI_LOGICAL, &
-      & rank-1, 1, MPI_comm_world, sreqL2, ierr)
-      if (ierr/=0) stop 'Error with MPI_issend sreqL2'
+      call MPI_Isend(occupied(4:6,:), 3*(y_max+6), MPI_LOGICAL, &
+      & rank-1, 2, MPI_comm_world, sreqL2, ierr)
+      if (ierr/=0) stop 'Error with MPI_Isend sreqL2'
 
       ! Receive coordinate data from the left
-      call MPI_Irecv(box(1:3,:,:), 3*(y_max+6), MPI_DOUBLE_PRECISION, &
-      & rank-1, 1, MPI_comm_world, reqL1, ierr)
-      if (ierr/=0) stop 'Error with MPI_irecv reqL1'
+      call MPI_Irecv(box(1:3,:,:), 6*(y_max+6), MPI_DOUBLE_PRECISION, &
+      & rank-1, 3, MPI_comm_world, reqL1, ierr)
+      if (ierr/=0) stop 'Error with MPI_Irecv reqL1'
       ! Receive occupation data from the left
       call MPI_Irecv(occupied(1:3,:), 3*(y_max+6), MPI_LOGICAL, &
-      & rank-1, 1, MPI_comm_world, reqL2, ierr)
-      if (ierr/=0) stop 'Error with MPI_irecv reqL2'
+      & rank-1, 4, MPI_comm_world, reqL2, ierr)
+      if (ierr/=0) stop 'Error with MPI_Irecv reqL2'
 
       ! Set arrays back to true values, while these coordinates are tested
-      occupied(int(x), int(y)) = .false.
-      box(int(x), int(y), 1) = 0.0_dp
-      box(int(x), int(y), 2) = 0.0_dp
+      if (int(x) < 7) then
+        ! Ensure data has been sent
+        call MPI_wait(sreqL1,sL1status,ierr)
+        if (ierr/=0) stop 'Error with MPI_wait sreqL1'
+        call MPI_wait(sreqL2,sL2status,ierr)
+        if (ierr/=0) stop 'Error with MPI_wait sreqL2'
+        occupied(int(x), int(y)) = .false.
+        box(int(x), int(y), 1) = 0.0_dp
+        box(int(x), int(y), 2) = 0.0_dp
+      endif
     end if
 
-    ! Check if lower halo needs updating
-    if ((int(y) < 7) .and. (rank+1 > x_div))  then
+    ! Update right halo
+    if (mod(rank+1, x_div) /= 0) then
       ! Cordon off this point
-      occupied(int(x), int(y)) = .true.
-      box(int(x), int(y), 1) = x
-      box(int(x), int(y), 2) = y
+      if (int(x) > x_max) then
+        occupied(int(x), int(y)) = .true.
+        box(int(x), int(y), 1) = x
+        box(int(x), int(y), 2) = y
+      endif
 
       ! Send coordinate data
-      call MPI_Issend(box(:,4:6,:), 3*(x_max+6), MPI_DOUBLE_PRECISION, &
-      & rank-1, 1, MPI_comm_world, sreqB1, ierr)
-      if (ierr/=0) stop 'Error with MPI_issend sreqB1'
+      call MPI_Isend(box(x_max+1:x_max+3,:,:),6*(y_max+6), MPI_DOUBLE_PRECISION, &
+      & rank+1, 3, MPI_comm_world, sreqR1, ierr)
+      if (ierr/=0) stop 'Error with MPI_Isend sreqR1'
       ! Send occupation data
-      call MPI_Issend(occupied(:,4:6), 3*(x_max+6), MPI_LOGICAL, &
-      & rank-x_div, 1, MPI_comm_world, sreqB2, ierr)
-      if (ierr/=0) stop 'Error with MPI_issend sreqB2'
-
-      ! Receive coordinate data from the below
-      call MPI_Irecv(box(:,1:3,:), 3*(x_max+6), MPI_DOUBLE_PRECISION, &
-      & rank-x_div, 1, MPI_comm_world, reqB1, ierr)
-      if (ierr/=0) stop 'Error with MPI_irecv reqB1'
-      ! Receive occupation data from the left
-      call MPI_Irecv(occupied(:,1:3), 3*(x_max+6), MPI_LOGICAL, &
-      & rank-x_div, 1, MPI_comm_world, reqB2, ierr)
-      if (ierr/=0) stop 'Error with MPI_irecv reqB2'
-
-      ! Set arrays back to true values, while these coordinates are tested
-      occupied(int(x), int(y)) = .false.
-      box(int(x), int(y), 1) = 0.0_dp
-      box(int(x), int(y), 2) = 0.0_dp
-    end if
-
-    ! Check if right halo needs updating
-    if ((int(x) > x_max) .and. (mod(rank+1, x_div) /= 0)) then
-      ! Cordon off this point
-      occupied(int(x), int(y)) = .true.
-      box(int(x), int(y), 1) = x
-      box(int(x), int(y), 2) = y
-
-      ! Send coordinate data
-      call MPI_Issend(box(x_max:x_max+3,:,:),3*(y_max+6), MPI_DOUBLE_PRECISION, &
-      & rank+1, 1, MPI_comm_world, sreqR1, ierr)
-      if (ierr/=0) stop 'Error with MPI_issend sreqR1'
-      ! Send occupation data
-      call MPI_Issend(occupied(x_max:x_max+3,:), 3*(y_max+6), MPI_LOGICAL, &
-      & rank+1, 1, MPI_comm_world, sreqR2, ierr)
-      if (ierr/=0) stop 'Error with MPI_issend sreqR2'
+      call MPI_Isend(occupied(x_max+1:x_max+3,:), 3*(y_max+6), MPI_LOGICAL, &
+      & rank+1, 4, MPI_comm_world, sreqR2, ierr)
+      if (ierr/=0) stop 'Error with MPI_Isend sreqR2'
 
       ! Receive coordinate data from the right
-      call MPI_Irecv(box(x_max+4;x_max+6,:,:), 3*(y_max+6), MPI_DOUBLE_PRECISION, &
+      call MPI_Irecv(box(x_max+4:x_max+6,:,:), 6*(y_max+6), MPI_DOUBLE_PRECISION, &
       & rank+1, 1, MPI_comm_world, reqR1, ierr)
-      if (ierr/=0) stop 'Error with MPI_irecv reqR1'
+      if (ierr/=0) stop 'Error with MPI_Irecv reqR1'
       ! Receive occupation data from the left
-      call MPI_Irecv(occupied(x_max+4;x_max+6,:), 3*(y_max+6), MPI_LOGICAL, &
-      & rank+1, 1, MPI_comm_world, reqR2, ierr)
-      if (ierr/=0) stop 'Error with MPI_irecv reqR2'
+      call MPI_Irecv(occupied(x_max+4:x_max+6,:), 3*(y_max+6), MPI_LOGICAL, &
+      & rank+1, 2, MPI_comm_world, reqR2, ierr)
+      if (ierr/=0) stop 'Error with MPI_Irecv reqR2'
 
       ! Set arrays back to true values, while these coordinates are tested
-      occupied(int(x), int(y)) = .false.
-      box(int(x), int(y), 1) = 0.0_dp
-      box(int(x), int(y), 2) = 0.0_dp
+      if (int(x) > x_max) then
+        call MPI_wait(sreqR1,sR1status,ierr)
+        if (ierr/=0) stop 'Error with MPI_wait sreqR1'
+        call MPI_wait(sreqR2,sR2status,ierr)
+        if (ierr/=0) stop 'Error with MPI_wait sreqR2'
+        occupied(int(x), int(y)) = .false.
+        box(int(x), int(y), 1) = 0.0_dp
+        box(int(x), int(y), 2) = 0.0_dp
+      endif
     end if
 
-    ! Check if halo above needs updating
-    if ((int(y) > y_max) .and. (rank+1 <= size - x_div)) then
-      send_above = .true.
+    ! Update top halo
+    if (rank+1 <= size - x_div) then
       ! Cordon off this point
-      occupied(int(x), int(y)) = .true.
-      box(int(x), int(y), 1) = x
-      box(int(x), int(y), 2) = y
+      if (int(y) > y_max) then
+        occupied(int(x), int(y)) = .true.
+        box(int(x), int(y), 1) = x
+        box(int(x), int(y), 2) = y
+      endif
 
       ! Send coordinate data
-      call MPI_Issend(box(:,y_max:y_max+3,:), 3*(x_max+6), MPI_DOUBLE_PRECISION, &
-      & rank-1, 1, MPI_comm_world, sreqT1, ierr)
-      if (ierr/=0) stop 'Error with MPI_issend sreqT1'
+      call MPI_Isend(box(:,y_max+1:y_max+3,:), 6*(x_max+6), MPI_DOUBLE_PRECISION, &
+      & rank+x_div, 5, MPI_comm_world, sreqT1, ierr)
+      if (ierr/=0) stop 'Error with MPI_Isend sreqT1'
       ! Send occupation data
-      call MPI_Issend(occupied(:,y_max:y_max+3), 3*(x_max+6), MPI_LOGICAL, &
-      & rank-x_div, 1, MPI_comm_world, sreqT2, ierr)
-      if (ierr/=0) stop 'Error with MPI_issend sreqT2'
+      call MPI_Isend(occupied(:,y_max+1:y_max+3), 3*(x_max+6), MPI_LOGICAL, &
+      & rank+x_div, 6, MPI_comm_world, sreqT2, ierr)
+      if (ierr/=0) stop 'Error with MPI_Isend sreqT2'
 
       ! Receive coordinate data from above
-      call MPI_Irecv(box(:,y_max+4:y_max+6,:), 3*(x_max+6), MPI_DOUBLE_PRECISION, &
-      & rank+x_div, 1, MPI_comm_world, reqT1, ierr)
-      if (ierr/=0) stop 'Error with MPI_irecv reqT1'
+      call MPI_Irecv(box(:,y_max+4:y_max+6,:), 6*(x_max+6), MPI_DOUBLE_PRECISION, &
+      & rank+x_div, 7, MPI_comm_world, reqT1, ierr)
+      if (ierr/=0) stop 'Error with MPI_Irecv reqT1'
       ! Receive occupation data from above
       call MPI_Irecv(occupied(:,y_max+4:y_max+6), 3*(x_max+6), MPI_LOGICAL, &
-      & rank+x_div, 1, MPI_comm_world, reqT2, ierr)
-      if (ierr/=0) stop 'Error with MPI_irecv reqT2'
+      & rank+x_div, 8, MPI_comm_world, reqT2, ierr)
+      if (ierr/=0) stop 'Error with MPI_Irecv reqT2'
 
       ! Set arrays back to true values, while these coordinates are tested
-      occupied(int(x), int(y)) = .false.
-      box(int(x), int(y), 1) = 0.0_dp
-      box(int(x), int(y), 2) = 0.0_dp
+      if (int(y) > y_max) then
+        call MPI_wait(sreqT1,sT1status,ierr)
+        if (ierr/=0) stop 'Error with MPI_wait sreqT1'
+        call MPI_wait(sreqT2,sT2status,ierr)
+        if (ierr/=0) stop 'Error with MPI_wait sreqT2'
+        occupied(int(x), int(y)) = .false.
+        box(int(x), int(y), 1) = 0.0_dp
+        box(int(x), int(y), 2) = 0.0_dp
+      endif
     end if
 
-    ! if there are circles nearby, see if the new circle will fit next to it
-    outer: do j = left, right
-      do k = below, above
+    ! Update bottom halos
+    if (rank+1 > x_div)  then
+      ! Cordon off this point
+      if (int(y) < 7) then
+        occupied(int(x), int(y)) = .true.
+        box(int(x), int(y), 1) = x
+        box(int(x), int(y), 2) = y
+      end if
+
+      ! Send coordinate data
+      call MPI_Isend(box(:,4:6,:), 6*(x_max+6), MPI_DOUBLE_PRECISION, &
+      & rank-x_div, 7, MPI_comm_world, sreqB1, ierr)
+      if (ierr/=0) stop 'Error with MPI_Isend sreqB1'
+      ! Send occupation data
+      call MPI_Isend(occupied(:,4:6), 3*(x_max+6), MPI_LOGICAL, &
+      & rank-x_div, 8, MPI_comm_world, sreqB2, ierr)
+      if (ierr/=0) stop 'Error with MPI_Isend sreqB2'
+
+      ! Receive coordinate data from the below
+      call MPI_Irecv(box(:,1:3,:), 6*(x_max+6), MPI_DOUBLE_PRECISION, &
+      & rank-x_div, 5, MPI_comm_world, reqB1, ierr)
+      if (ierr/=0) stop 'Error with MPI_Irecv reqB1'
+      ! Receive occupation data from the left
+      call MPI_Irecv(occupied(:,1:3), 3*(x_max+6), MPI_LOGICAL, &
+      & rank-x_div, 6, MPI_comm_world, reqB2, ierr)
+      if (ierr/=0) stop 'Error with MPI_Irecv reqB2'
+
+      ! Set arrays back to true values, while these coordinates are tested
+      if (int(x) < 7) then
+        ! Ensure data has been sent
+        call MPI_wait(sreqB1,sB1status,ierr)
+        if (ierr/=0) stop 'Error with MPI_wait sreqB1'
+        call MPI_wait(sreqB2,sB2status,ierr)
+        if (ierr/=0) stop 'Error with MPI_wait sreqB2'
+        occupied(int(x), int(y)) = .false.
+        box(int(x), int(y), 1) = 0.0_dp
+        box(int(x), int(y), 2) = 0.0_dp
+      end if
+    end if
+
+    ! Ensure all data has been received
+    ! Left
+    if (mod(rank+1, x_div) /= 1) then
+      ! Check array 1 has sent
+      call MPI_Test(sreqL1,sent,sL1status,ierr)
+      if (.not. sent) then
+        call MPI_wait(sreqL1,sL1status,ierr)
+        if (ierr/=0) stop 'Error with MPI_wait sreqL1'
+      endif
+
+      ! Check array 2 has sent
+      call MPI_Test(sreqL2,sent,sL2status,ierr)
+      if (.not. sent) then
+        call MPI_wait(sreqL2,sL2status,ierr)
+        if (ierr/=0) stop 'Error with MPI_wait sreqL2'
+      endif
+
+      ! Ensure array 1 is received
+      call MPI_wait(reqL1,rL1status,ierr)
+      if (ierr/=0) stop 'Error with MPI_wait reqL1'
+      ! Ensure array 2 is received
+      call MPI_wait(reqL2,rL2status,ierr)
+      if (ierr/=0) stop 'Error with MPI_wait reqL2'
+    endif
+
+    ! Right
+    if (mod(rank+1, x_div) /= 0) then
+      ! Check array 1 has sent
+      call MPI_Test(sreqR1,sent,sR1status,ierr)
+      if (.not. sent) then
+        call MPI_wait(sreqR1,sR1status,ierr)
+        if (ierr/=0) stop 'Error with MPI_wait sreqR1'
+      endif
+      ! Check array 2 has sent
+      call MPI_Test(sreqR2,sent,sR2status,ierr)
+      if (.not. sent) then
+        call MPI_wait(sreqR2,sR2status,ierr)
+        if (ierr/=0) stop 'Error with MPI_wait sreqR2'
+      endif
+
+      ! Ensure array 1 is received
+      call MPI_wait(reqR1,rR1status,ierr)
+      if (ierr/=0) stop 'Error with MPI_wait reqR1'
+      ! Ensure array 2 is received
+      call MPI_wait(reqR2,rR2status,ierr)
+      if (ierr/=0) stop 'Error with MPI_wait reqR2'
+    endif
+
+    ! Top
+    if (rank+1 <= size - x_div) then
+      ! Check array 1 has sent
+      call MPI_Test(sreqT1,sent,sT1status,ierr)
+      if (.not. sent) then
+        call MPI_wait(sreqT1,sT1status,ierr)
+        if (ierr/=0) stop 'Error with MPI_wait sreqT1'
+      endif
+      ! Check array 2 has sent
+      call MPI_Test(sreqT2,sent,sT2status,ierr)
+      if (.not. sent) then
+        call MPI_wait(sreqT2,sT2status,ierr)
+        if (ierr/=0) stop 'Error with MPI_wait sreqT2'
+      endif
+
+      ! Ensure array 1 is received
+      call MPI_wait(reqT1,rT1status,ierr)
+      if (ierr/=0) stop 'Error with MPI_wait reqT1'
+      ! Ensure array 2 is received
+      call MPI_wait(reqT2,rT2status,ierr)
+      if (ierr/=0) stop 'Error with MPI_wait reqT2'
+    endif
+
+    ! Bottom
+    if (rank+1 > x_div) then
+      ! Check array 1 has sent
+      call MPI_Test(sreqB1,sent,sB1status,ierr)
+      if (.not. sent) then
+        call MPI_wait(sreqB1,sB1status,ierr)
+        if (ierr/=0) stop 'Error with MPI_wait sreqB1'
+      endif
+      ! Check array 2 has sent
+      call MPI_Test(sreqB2,sent,sB2status,ierr)
+      if (.not. sent) then
+        call MPI_wait(sreqB2,sB2status,ierr)
+        if (ierr/=0) stop 'Error with MPI_wait sreqB2'
+      endif
+
+      ! Ensure array 1 is received
+      call MPI_wait(reqB1,rB1status,ierr)
+      if (ierr/=0) stop 'Error with MPI_wait reqB1'
+      ! Ensure array 2 is received
+      call MPI_wait(reqB2,rB2status,ierr)
+      if (ierr/=0) stop 'Error with MPI_wait reqB2'
+    endif
+
+    ! If there are circles nearby, see if the new circle will fit next to it
+    outer: do j = -3, 3
+      do k = -3, 3
         ! skip central cell
         if ( (j == 0) .and. (k == 0) ) cycle
         ! skip cells that are greater than 2*r away
@@ -358,9 +483,9 @@ program packing
       end do
     end do outer
 
-    ! if there is room for the circle, add it to the box
+    ! If there is room for the circle, add it to the box
     if ( pack ) then
-      ! print *, "Circle added", x, y
+      print *, "Circle added", x, y, "on rank", rank
       N_circ = N_circ + 1
       occupied(int(x), int(y)) = .true.
       box(int(x), int(y), 1) = x

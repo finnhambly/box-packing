@@ -195,8 +195,6 @@ program packing
       y = y_max * rng_uniform(rng) + 4 ! otherwise, allow overlap with halo
     end if
 
-    print*, "testing", x, y, "ints", int(x), int(y), "on rank", rank
-
     ! set boolean test to default value
     pack = .true.
 
@@ -464,7 +462,6 @@ program packing
       if (ierr/=0) stop 'Error with MPI_wait reqB2'
     endif
 
-    print*, "I got to here on rank", rank
     ! If there are circles nearby, see if the new circle will fit next to it
     outer: do j = -3, 3
       do k = -3, 3
