@@ -216,20 +216,20 @@ program packing
       endif
 
       ! Send coordinate data
-      call MPI_Issend(box(4:6,:,:),6*(y_max+6), MPI_DOUBLE_PRECISION, &
+      call MPI_Issend(box(4:6,1,1),6*(y_max+6), MPI_DOUBLE_PRECISION, &
       & rank-1, 1, MPI_comm_world, sreqL1, ierr)
       if (ierr/=0) stop 'Error with MPI_Issend sreqL1'
       ! Send occupation data
-      call MPI_Issend(occupied(4:6,:), 3*(y_max+6), MPI_LOGICAL, &
+      call MPI_Issend(occupied(4:6,1), 3*(y_max+6), MPI_LOGICAL, &
       & rank-1, 2, MPI_comm_world, sreqL2, ierr)
       if (ierr/=0) stop 'Error with MPI_Issend sreqL2'
 
       ! Receive coordinate data from the left
-      call MPI_Irecv(box(1:3,:,:), 6*(y_max+6), MPI_DOUBLE_PRECISION, &
+      call MPI_Irecv(box(1:3,1,1), 6*(y_max+6), MPI_DOUBLE_PRECISION, &
       & rank-1, 3, MPI_comm_world, reqL1, ierr)
       if (ierr/=0) stop 'Error with MPI_Irecv reqL1'
       ! Receive occupation data from the left
-      call MPI_Irecv(occupied(1:3,:), 3*(y_max+6), MPI_LOGICAL, &
+      call MPI_Irecv(occupied(1:3,1), 3*(y_max+6), MPI_LOGICAL, &
       & rank-1, 4, MPI_comm_world, reqL2, ierr)
       if (ierr/=0) stop 'Error with MPI_Irecv reqL2'
 
@@ -256,20 +256,20 @@ program packing
       endif
 
       ! Send coordinate data
-      call MPI_Issend(box(x_max+1:x_max+3,:,:),6*(y_max+6), MPI_DOUBLE_PRECISION, &
+      call MPI_Issend(box(x_max+1:x_max+3,1,1),6*(y_max+6), MPI_DOUBLE_PRECISION, &
       & rank+1, 3, MPI_comm_world, sreqR1, ierr)
       if (ierr/=0) stop 'Error with MPI_Issend sreqR1'
       ! Send occupation data
-      call MPI_Issend(occupied(x_max+1:x_max+3,:), 3*(y_max+6), MPI_LOGICAL, &
+      call MPI_Issend(occupied(x_max+1:x_max+3,1), 3*(y_max+6), MPI_LOGICAL, &
       & rank+1, 4, MPI_comm_world, sreqR2, ierr)
       if (ierr/=0) stop 'Error with MPI_Issend sreqR2'
 
       ! Receive coordinate data from the right
-      call MPI_Irecv(box(x_max+4:x_max+6,:,:), 6*(y_max+6), MPI_DOUBLE_PRECISION, &
+      call MPI_Irecv(box(x_max+4:x_max+6,1,1), 6*(y_max+6), MPI_DOUBLE_PRECISION, &
       & rank+1, 1, MPI_comm_world, reqR1, ierr)
       if (ierr/=0) stop 'Error with MPI_Irecv reqR1'
       ! Receive occupation data from the left
-      call MPI_Irecv(occupied(x_max+4:x_max+6,:), 3*(y_max+6), MPI_LOGICAL, &
+      call MPI_Irecv(occupied(x_max+4:x_max+6,1), 3*(y_max+6), MPI_LOGICAL, &
       & rank+1, 2, MPI_comm_world, reqR2, ierr)
       if (ierr/=0) stop 'Error with MPI_Irecv reqR2'
 
@@ -295,7 +295,7 @@ program packing
       endif
 
       ! Send coordinate data
-      call MPI_Issend(box(:,y_max+1:y_max+3,:), 6*(x_max+6), MPI_DOUBLE_PRECISION, &
+      call MPI_Issend(box(:,y_max+1:y_max+3,1), 6*(x_max+6), MPI_DOUBLE_PRECISION, &
       & rank+x_div, 5, MPI_comm_world, sreqT1, ierr)
       if (ierr/=0) stop 'Error with MPI_Issend sreqT1'
       ! Send occupation data
@@ -304,7 +304,7 @@ program packing
       if (ierr/=0) stop 'Error with MPI_Issend sreqT2'
 
       ! Receive coordinate data from above
-      call MPI_Irecv(box(:,y_max+4:y_max+6,:), 6*(x_max+6), MPI_DOUBLE_PRECISION, &
+      call MPI_Irecv(box(:,y_max+4:y_max+6,1), 6*(x_max+6), MPI_DOUBLE_PRECISION, &
       & rank+x_div, 7, MPI_comm_world, reqT1, ierr)
       if (ierr/=0) stop 'Error with MPI_Irecv reqT1'
       ! Receive occupation data from above
@@ -334,7 +334,7 @@ program packing
       end if
 
       ! Send coordinate data
-      call MPI_Issend(box(:,4:6,:), 6*(x_max+6), MPI_DOUBLE_PRECISION, &
+      call MPI_Issend(box(:,4:6,1), 6*(x_max+6), MPI_DOUBLE_PRECISION, &
       & rank-x_div, 7, MPI_comm_world, sreqB1, ierr)
       if (ierr/=0) stop 'Error with MPI_Issend sreqB1'
       ! Send occupation data
@@ -343,7 +343,7 @@ program packing
       if (ierr/=0) stop 'Error with MPI_Issend sreqB2'
 
       ! Receive coordinate data from the below
-      call MPI_Irecv(box(:,1:3,:), 6*(x_max+6), MPI_DOUBLE_PRECISION, &
+      call MPI_Irecv(box(:,1:3,1), 6*(x_max+6), MPI_DOUBLE_PRECISION, &
       & rank-x_div, 5, MPI_comm_world, reqB1, ierr)
       if (ierr/=0) stop 'Error with MPI_Irecv reqB1'
       ! Receive occupation data from the left
