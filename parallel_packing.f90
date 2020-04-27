@@ -137,7 +137,7 @@ program packing
     x_max = L/x_div + L - x_div*(L/x_div)
   endif
 
-  if ( mod(rank+1, y_div) /= 0 ) then
+  if ( rank+1 <= size - x_div ) then
     y_max = L/y_div
   else
     y_max = L/y_div + L - y_div*(L/y_div)
