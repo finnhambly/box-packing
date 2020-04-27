@@ -86,7 +86,7 @@ program packing
   logical, dimension(L,L) :: occupied
   real(kind=dp) :: x, y, D
   logical :: pack
-  integer :: i, j, k, N_circ, cellx, celly, left, right, above, below, ios
+  integer :: i, j, k, N_circ, left, right, above, below, ios
   type(rng_t):: rng   ! custom type for random number generator
 
   ! set occupation status of box as empty
@@ -103,7 +103,7 @@ program packing
   ! random number seed
   call rng_seed(rng, 362436069)
   N_circ = 0
-  do i = 1, 1000000000
+  do i = 1, 10000000
     ! generate new random coordinates within the box
     x = (L-2*r) * rng_uniform(rng) + r
     y = (L-2*r) * rng_uniform(rng) + r
@@ -142,7 +142,7 @@ program packing
     end if
 
     ! if there are circles nearby, see if the new circle will fit next to it
-    do j = left, right
+    outer: do j = left, right
       do k = below, above
         ! skip central cell
         if ( (j == 0) .and. (k == 0) ) cycle
@@ -156,11 +156,11 @@ program packing
           ! abandon coords if the distance between the two circles is too small
           if ( D < (2*r)**2 ) then
             pack = .false.
-            exit !add ability to exit both loops
+            exit outer
           endif
         end if
       end do
-    end do
+    end do outer
 
     ! if there is room for the circle, add it to the box
     if ( pack ) then
