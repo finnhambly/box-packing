@@ -86,7 +86,7 @@ program packing
   logical, allocatable       :: occupied(:,:)
   real(kind=dp) :: x, y, D
   logical :: pack
-  integer :: i, j, k, N_circ, ios, ierr
+  integer :: i, j, k, N_circ, N, ios, ierr
   type(rng_t):: rng   ! custom type for random number generator
   ! MPI variables
   integer :: size, rank, x_div, y_div, x_max, y_max
@@ -106,21 +106,21 @@ program packing
   if (ierr/=0) stop 'Error with MPI_comm_size'
 
   ! Open file for visualising placement
-  if ( rank == 0 ) then
+  if ( rank == 1 ) then
     open(unit=11, file='segment.dat', status='replace', iostat=ios)
     if ( ios /= 0 ) stop "Error opening file segment.dat"
   endif
 
   1 format('Error: number of threads,',i4,', larger than array size',i8)
   if ( size > L**2 ) then
-    if ( rank == 0 ) print 1, size, L**2
+    if ( rank == 1 ) print 1, size, L**2
     call MPI_Finalize(ierr)
     stop
   endif
 
   ! Decompose problem according to the number of threads
   ! Divide box into squares, or near rectangles if not possible
-  x_div = ceiling(sqrt(real(size)))
+  x_div = nint(sqrt(real(size)))
   if ( mod(size,x_div) == 0 ) then
     y_div = size/x_div ! 2D decomposition
   else ! Resort to 1D decomposition if 2D is not possible
@@ -159,7 +159,7 @@ program packing
   ! random number seed
   call rng_seed(rng, 362436069+3624*rank)
   N_circ = 0
-  do i = 1, 10000000
+  do i = 1, 100000
     ! generate new random coordinates within the box, depending on rank
     if ((mod(rank+1, x_div) == 1) .and. (mod(rank+1, x_div) == 0)) then
       x = (x_max-2*r) * rng_uniform(rng) + r + 4 ! do not place over the edge
@@ -184,30 +184,25 @@ program packing
     ! set boolean test to default value
     pack = .true.
 
-    ! if grid point already occupied, then skip these coordinates
-    if (occupied(int(x),int(y))) cycle
-
-    ! Not exhaustive check but skips any that will definitely not fit
-    ! Look and, if nearest neighbours are occupied, skip:
-    if ( occupied(int(x)+1,int(y)) .or. occupied(int(x)-1,int(y)) .or. &
-    occupied(int(x),int(y)+1) .or. occupied(int(x),int(y)-1)) cycle
-
     ! Update left halos
     if (mod(rank+1, x_div) /= 1) then
-      if (int(x) < 7) then! Cordon off this point
-        occupied(int(x), int(y)) = .true.
-        box(int(x), int(y), 1) = x
-        box(int(x), int(y), 2) = y
-      endif
+      ! if (int(x) < 7) then! Cordon off this point
+      !   occupied(int(x), int(y)) = .true.
+      !   box(int(x), int(y), 1) = x
+      !   box(int(x), int(y), 2) = y
+      ! endif
 
       ! Send coordinate data
-      call MPI_Issend(box(4:6,1,1),6*(y_max+6), MPI_DOUBLE_PRECISION, &
+      ! call MPI_Type_create_subarray(3,[x_max+6,y_max+6,2],[3,y_max+6,2],&
+      ! box(4,1,1),MPI_ORDER_FORTRAN, MPI_DOUBLE_PRECISION, &
+      ! MPI_DOUBLE_PRECISION, ierr)
+      call MPI_ISend(box(4:6,1,1),6*(y_max+6), MPI_DOUBLE_PRECISION, &
       & rank-1, 1, MPI_comm_world, sreqL1, ierr)
-      if (ierr/=0) stop 'Error with MPI_Issend sreqL1'
+      if (ierr/=0) stop 'Error with MPI_ISend sreqL1'
       ! Send occupation data
-      call MPI_Issend(occupied(4:6,1), 3*(y_max+6), MPI_LOGICAL, &
+      call MPI_ISend(occupied(4:6,1), 3*(y_max+6), MPI_LOGICAL, &
       & rank-1, 2, MPI_comm_world, sreqL2, ierr)
-      if (ierr/=0) stop 'Error with MPI_Issend sreqL2'
+      if (ierr/=0) stop 'Error with MPI_ISend sreqL2'
 
       ! Receive coordinate data from the left
       call MPI_Irecv(box(1:3,1,1), 6*(y_max+6), MPI_DOUBLE_PRECISION, &
@@ -222,20 +217,20 @@ program packing
     ! Update right halo
     if (mod(rank+1, x_div) /= 0) then
       ! Cordon off this point
-      if (int(x) > x_max) then
-        occupied(int(x), int(y)) = .true.
-        box(int(x), int(y), 1) = x
-        box(int(x), int(y), 2) = y
-      endif
+      ! if (int(x) > x_max) then
+      !   occupied(int(x), int(y)) = .true.
+      !   box(int(x), int(y), 1) = x
+      !   box(int(x), int(y), 2) = y
+      ! endif
 
       ! Send coordinate data
-      call MPI_Issend(box(x_max+1:x_max+3,1,1),6*(y_max+6), MPI_DOUBLE_PRECISION, &
+      call MPI_ISend(box(x_max+1:x_max+3,1,1),6*(y_max+6), MPI_DOUBLE_PRECISION, &
       & rank+1, 3, MPI_comm_world, sreqR1, ierr)
-      if (ierr/=0) stop 'Error with MPI_Issend sreqR1'
+      if (ierr/=0) stop 'Error with MPI_ISend sreqR1'
       ! Send occupation data
-      call MPI_Issend(occupied(x_max+1:x_max+3,1), 3*(y_max+6), MPI_LOGICAL, &
+      call MPI_ISend(occupied(x_max+1:x_max+3,1), 3*(y_max+6), MPI_LOGICAL, &
       & rank+1, 4, MPI_comm_world, sreqR2, ierr)
-      if (ierr/=0) stop 'Error with MPI_Issend sreqR2'
+      if (ierr/=0) stop 'Error with MPI_ISend sreqR2'
 
       ! Receive coordinate data from the right
       call MPI_Irecv(box(x_max+4:x_max+6,1,1), 6*(y_max+6), MPI_DOUBLE_PRECISION, &
@@ -250,20 +245,20 @@ program packing
     ! Update top halo
     if (rank+1 <= size - x_div) then
       ! Cordon off this point
-      if (int(y) > y_max) then
-        occupied(int(x), int(y)) = .true.
-        box(int(x), int(y), 1) = x
-        box(int(x), int(y), 2) = y
-      endif
+      ! if (int(y) > y_max) then
+      !   occupied(int(x), int(y)) = .true.
+      !   box(int(x), int(y), 1) = x
+      !   box(int(x), int(y), 2) = y
+      ! endif
 
       ! Send coordinate data
-      call MPI_Issend(box(:,y_max+1:y_max+3,1), 6*(x_max+6), MPI_DOUBLE_PRECISION, &
+      call MPI_ISend(box(:,y_max+1:y_max+3,1), 6*(x_max+6), MPI_DOUBLE_PRECISION, &
       & rank+x_div, 5, MPI_comm_world, sreqT1, ierr)
-      if (ierr/=0) stop 'Error with MPI_Issend sreqT1'
+      if (ierr/=0) stop 'Error with MPI_ISend sreqT1'
       ! Send occupation data
-      call MPI_Issend(occupied(:,y_max+1:y_max+3), 3*(x_max+6), MPI_LOGICAL, &
+      call MPI_ISend(occupied(:,y_max+1:y_max+3), 3*(x_max+6), MPI_LOGICAL, &
       & rank+x_div, 6, MPI_comm_world, sreqT2, ierr)
-      if (ierr/=0) stop 'Error with MPI_Issend sreqT2'
+      if (ierr/=0) stop 'Error with MPI_ISend sreqT2'
 
       ! Receive coordinate data from above
       call MPI_Irecv(box(:,y_max+4:y_max+6,1), 6*(x_max+6), MPI_DOUBLE_PRECISION, &
@@ -278,20 +273,20 @@ program packing
     ! Update bottom halos
     if (rank+1 > x_div)  then
       ! Cordon off this point
-      if (int(y) < 7) then
-        occupied(int(x), int(y)) = .true.
-        box(int(x), int(y), 1) = x
-        box(int(x), int(y), 2) = y
-      end if
+      ! if (int(y) < 7) then
+      !   occupied(int(x), int(y)) = .true.
+      !   box(int(x), int(y), 1) = x
+      !   box(int(x), int(y), 2) = y
+      ! end if
 
       ! Send coordinate data
-      call MPI_Issend(box(:,4:6,1), 6*(x_max+6), MPI_DOUBLE_PRECISION, &
+      call MPI_ISend(box(:,4:6,1), 6*(x_max+6), MPI_DOUBLE_PRECISION, &
       & rank-x_div, 7, MPI_comm_world, sreqB1, ierr)
-      if (ierr/=0) stop 'Error with MPI_Issend sreqB1'
+      if (ierr/=0) stop 'Error with MPI_ISend sreqB1'
       ! Send occupation data
-      call MPI_Issend(occupied(:,4:6), 3*(x_max+6), MPI_LOGICAL, &
+      call MPI_ISend(occupied(:,4:6), 3*(x_max+6), MPI_LOGICAL, &
       & rank-x_div, 8, MPI_comm_world, sreqB2, ierr)
-      if (ierr/=0) stop 'Error with MPI_Issend sreqB2'
+      if (ierr/=0) stop 'Error with MPI_ISend sreqB2'
 
       ! Receive coordinate data from below
       call MPI_Irecv(box(:,1:3,1), 6*(x_max+6), MPI_DOUBLE_PRECISION, &
@@ -322,11 +317,11 @@ program packing
       if (ierr/=0) stop 'Error with MPI_wait reqL2'
 
       ! unblock region around test coordinates (when near edge)
-      if (int(x) < 7) then
-        occupied(int(x), int(y)) = .false.
-        box(int(x), int(y), 1) = 0.0_dp
-        box(int(x), int(y), 2) = 0.0_dp
-      endif
+      ! if (int(x) < 7) then
+      !   occupied(int(x), int(y)) = .false.
+      !   box(int(x), int(y), 1) = 0.0_dp
+      !   box(int(x), int(y), 2) = 0.0_dp
+      ! endif
     endif
 
     ! Right
@@ -346,11 +341,11 @@ program packing
       if (ierr/=0) stop 'Error with MPI_wait reqR2'
 
       ! unblock region around test coordinates (when near edge)
-      if (int(x) > x_max) then
-        occupied(int(x), int(y)) = .false.
-        box(int(x), int(y), 1) = 0.0_dp
-        box(int(x), int(y), 2) = 0.0_dp
-      endif
+      ! if (int(x) > x_max) then
+      !   occupied(int(x), int(y)) = .false.
+      !   box(int(x), int(y), 1) = 0.0_dp
+      !   box(int(x), int(y), 2) = 0.0_dp
+      ! endif
     endif
 
     ! Top
@@ -370,11 +365,11 @@ program packing
       if (ierr/=0) stop 'Error with MPI_wait reqT2'
 
       ! Set arrays back to true values, while these coordinates are tested
-      if (int(y) > y_max) then
-        occupied(int(x), int(y)) = .false.
-        box(int(x), int(y), 1) = 0.0_dp
-        box(int(x), int(y), 2) = 0.0_dp
-      endif
+      ! if (int(y) > y_max) then
+      !   occupied(int(x), int(y)) = .false.
+      !   box(int(x), int(y), 1) = 0.0_dp
+      !   box(int(x), int(y), 2) = 0.0_dp
+      ! endif
     endif
 
     ! Bottom
@@ -393,18 +388,26 @@ program packing
       call MPI_wait(reqB2,rB2status,ierr)
       if (ierr/=0) stop 'Error with MPI_wait reqB2'
 
-      if (int(y) < 7) then
-        occupied(int(x), int(y)) = .false.
-        box(int(x), int(y), 1) = 0.0_dp
-        box(int(x), int(y), 2) = 0.0_dp
-      end if
+      ! if (int(y) < 7) then
+      !   occupied(int(x), int(y)) = .false.
+      !   box(int(x), int(y), 1) = 0.0_dp
+      !   box(int(x), int(y), 2) = 0.0_dp
+      ! end if
     endif
+
+    ! if grid point already occupied, then skip these coordinates
+    if (occupied(int(x),int(y))) cycle
+
+    ! Not exhaustive check but skips any that will definitely not fit
+    ! Look and, if nearest neighbours are occupied, skip:
+    if ( occupied(int(x)+1,int(y)) .or. occupied(int(x)-1,int(y)) .or. &
+    occupied(int(x),int(y)+1) .or. occupied(int(x),int(y)-1)) cycle
 
     ! If there are circles nearby, see if the new circle will fit next to it
     outer: do j = -3, 3
       do k = -3, 3
         ! skip central cell
-        if ( (j == 0) .and. (k == 0) ) cycle
+        ! if ( (j == 0) .and. (k == 0) ) cycle
         ! skip cells that are greater than 2*r away
         if ( (abs(j) == 3) .and. (abs(k) == 3) ) cycle
         ! if nearby gridpoint is occupied, test distance between circles
@@ -429,7 +432,7 @@ program packing
       box(int(x), int(y), 1) = x
       box(int(x), int(y), 2) = y
       ! check it is working
-      if ( rank == 0 .and. (int(x) < 50) .and. (int(y) < 50) ) then
+      if ( rank == 1 .and. (int(x) < 50) .and. (int(y) < 50) ) then
         write(unit=11, fmt=*, iostat=ios) x, y
         if ( ios /= 0 ) stop "Write error in file unit 11"
       end if
@@ -443,6 +446,12 @@ program packing
       ! endif
   end do
 
+  call MPI_Reduce(N_circ,N,1,MPI_INTEGER,MPI_SUM,0,MPI_COMM_WORLD,ierr)
+
+  ! if ( rank == 1 ) then
+    print*, pi*N*r**2/L**2, rank
+  ! endif
+
   ! write the final packing fraction and print to terminal
   ! write(unit=22, fmt=*, iostat=ios) i, pi*N_circ*r**2/L**2
   ! print*, pi*N_circ*r**2/L**2
@@ -455,7 +464,7 @@ program packing
   ! gnuplot> plot 'segment.dat' with circles
 
   ! Close data file
-  if ( rank == 0 ) then
+  if ( rank == 1 ) then
     close(unit=11, iostat=ios)
     if ( ios /= 0 ) stop "Error closing file unit 11"
   endif
