@@ -97,8 +97,6 @@ program packing
     sR2status, sT1status, sT2status, sB1status, sB2status, &
     rL1status,rL2status,rR1status, rR2status, rT1status, rT2status, rB1status,&
     rB2status
-  real(kind=dp) :: start_time, stop_time
-  integer, allocatable :: array(:), dimensions(:,:)
 
   ! Initialise MPI
   call MPI_init(ierr)
@@ -114,10 +112,6 @@ program packing
     call MPI_Finalize(ierr)
     stop
   endif
-
-  ! Allocate array for recording array sizes
-  allocate(dimensions(size,2), stat=ierr)
-  if (ierr /= 0) print *, 'rcounts: Allocation request denied'
 
   ! Decompose problem according to the number of threads
   ! Divide box into squares, or near rectangles if not possible
@@ -175,7 +169,7 @@ program packing
   ! end if
 
   ! random number seed
-  call rng_seed(rng, 362436069+rank)
+  call rng_seed(rng, 362436069+3624*rank)
   N_circ = 0
   do i = 1, 10000000
     ! generate new random coordinates within the box, depending on rank
@@ -207,7 +201,7 @@ program packing
     ! at the edges would require comms, which is counterproductive
     ! since this is designed to be a quick check.
     if ( (int(x) /= 4) .and. (int(x) /= x_max + 4) &
-    .and. (int(y) /= 3) .and. (int(y) /= y_max + 4) ) then
+    .and. (int(y) /= 4) .and. (int(y) /= y_max + 4) ) then
     ! ...look and, if nearest neighbours are occupied, skip
       if ( occupied(int(x)+1,int(y)) .or. occupied(int(x)-1,int(y)) .or. &
       occupied(int(x),int(y)+1) .or. occupied(int(x),int(y)-1)) cycle
@@ -517,9 +511,6 @@ program packing
   ! to plot on gnuplot:
   ! gnuplot> set style circle radius 1.234
   ! gnuplot> plot 'segment.dat' with circles
-
-  if (allocated(dimensions)) deallocate(dimensions, stat=ierr)
-  if ( ierr /= 0) print *, "dimensions: Deallocation request denied"
 
   if (allocated(box)) deallocate(box, stat=ierr)
   if ( ierr /= 0) print *, "box: Deallocation request denied"
