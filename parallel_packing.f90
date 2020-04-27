@@ -195,6 +195,8 @@ program packing
       y = y_max * rng_uniform(rng) + 4 ! otherwise, allow overlap with halo
     end if
 
+    print*, "Testing x=", int(x), "and y=", int(y)
+
     ! set boolean test to default value
     pack = .true.
 
