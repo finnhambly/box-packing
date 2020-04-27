@@ -106,26 +106,28 @@ program packing
   if (ierr/=0) stop 'Error with MPI_comm_size'
 
   ! Open file for visualising placement
-  if ( rank == 1 ) then
+  if ( rank == 0 ) then
     open(unit=11, file='segment.dat', status='replace', iostat=ios)
     if ( ios /= 0 ) stop "Error opening file segment.dat"
   endif
 
   1 format('Error: number of threads,',i4,', larger than array size',i8)
   if ( size > L**2 ) then
-    if ( rank == 1 ) print 1, size, L**2
+    if ( rank == 0 ) print 1, size, L**2
     call MPI_Finalize(ierr)
     stop
   endif
 
   ! Decompose problem according to the number of threads
   ! Divide box into squares, or near rectangles if not possible
-  x_div = nint(sqrt(real(size)))
+  2 format('Error: number of threads,',i4,', cannot be used for 2D decomposition')
+  x_div = ceiling(sqrt(real(size)))
   if ( mod(size,x_div) == 0 ) then
     y_div = size/x_div ! 2D decomposition
-  else ! Resort to 1D decomposition if 2D is not possible
-    x_div = size
-    y_div = 1
+  else ! If 2D decomp not possible, stop (this code is only set up for 2D)
+    if ( rank == 0 ) print 2, size
+    call MPI_Finalize(ierr)
+    stop
   endif
 
   ! Allocate number of grid points to each thread, adding leftovers to the
@@ -143,8 +145,8 @@ program packing
   endif
 
   ! Initialise array on each thread
-  2 format('Array length on rank ',i4,' is ', i8, ' by ', i8)
-  print 2, rank, x_max, y_max
+  3 format('Array length on rank ',i4,' is ', i8, ' by ', i8)
+  print 3, rank, x_max, y_max
   ! Allocate arrays for storing coordinates (and occupation states) with a halo
   ! of +3 on each side
   allocate(box(x_max+6,y_max+6,2), stat=ierr)
@@ -432,7 +434,7 @@ program packing
       box(int(x), int(y), 1) = x
       box(int(x), int(y), 2) = y
       ! check it is working
-      if ( rank == 1 .and. (int(x) < 50) .and. (int(y) < 50) ) then
+      if ( rank == 0 .and. (int(x) < 50) .and. (int(y) < 50) ) then
         write(unit=11, fmt=*, iostat=ios) x, y
         if ( ios /= 0 ) stop "Write error in file unit 11"
       end if
@@ -448,7 +450,7 @@ program packing
 
   call MPI_Reduce(N_circ,N,1,MPI_INTEGER,MPI_SUM,0,MPI_COMM_WORLD,ierr)
 
-  ! if ( rank == 1 ) then
+  ! if ( rank == 0 ) then
     print*, pi*N*r**2/L**2, rank
   ! endif
 
@@ -464,7 +466,7 @@ program packing
   ! gnuplot> plot 'segment.dat' with circles
 
   ! Close data file
-  if ( rank == 1 ) then
+  if ( rank == 0 ) then
     close(unit=11, iostat=ios)
     if ( ios /= 0 ) stop "Error closing file unit 11"
   endif
