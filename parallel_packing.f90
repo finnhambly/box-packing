@@ -91,11 +91,13 @@ program packing
   ! MPI variables
   integer :: size, rank, x_div, y_div, x_max, y_max
   integer :: reqL1,reqL2,reqR1,reqR2,reqB1,reqB2,reqT1,reqT2
+  integer :: reqL3,reqR3,reqB3,reqT3,sreqL3,sreqR3,sreqB3,sreqT3
   integer :: sreqL1,sreqL2,sreqR1,sreqR2,sreqB1,sreqB2,sreqT1,sreqT2
   integer, dimension(1:MPI_STATUS_SIZE) :: sL1status,sL2status,sR1status, &
     sR2status, sT1status, sT2status, sB1status, sB2status, &
     rL1status,rL2status,rR1status, rR2status, rT1status, rT2status, rB1status,&
-    rB2status
+    rB2status, sL3status,sR3status, sT3status, sB3status, rL3status,rR3status,&
+    rT3status, rB3status
 
   ! Initialise MPI
   call MPI_init(ierr)
@@ -120,14 +122,12 @@ program packing
 
   ! Decompose problem according to the number of threads
   ! Divide box into squares, or near rectangles if not possible
-  2 format('Error: number of threads,',i4,', cannot be used for 2D decomposition')
-  x_div = ceiling(sqrt(real(size)))
+  x_div = nint(sqrt(real(size)))
   if ( mod(size,x_div) == 0 ) then
     y_div = size/x_div ! 2D decomposition
-  else ! If 2D decomp not possible, stop (this code is only set up for 2D)
-    if ( rank == 0 ) print 2, size
-    call MPI_Finalize(ierr)
-    stop
+  else ! Resort to 1D decomposition if 2D is not possible
+    x_div = size
+    y_div = 1
   endif
 
   ! Allocate number of grid points to each thread, adding leftovers to the
@@ -145,8 +145,8 @@ program packing
   endif
 
   ! Initialise array on each thread
-  3 format('Array length on rank ',i4,' is ', i8, ' by ', i8)
-  print 3, rank, x_max, y_max
+  2 format('Array length on rank ',i4,' is ', i8, ' by ', i8)
+  print 2, rank, x_max, y_max
   ! Allocate arrays for storing coordinates (and occupation states) with a halo
   ! of +3 on each side
   allocate(box(x_max+6,y_max+6,2), stat=ierr)
@@ -198,18 +198,24 @@ program packing
       ! call MPI_Type_create_subarray(3,[x_max+6,y_max+6,2],[3,y_max+6,2],&
       ! box(4,1,1),MPI_ORDER_FORTRAN, MPI_DOUBLE_PRECISION, &
       ! MPI_DOUBLE_PRECISION, ierr)
-      call MPI_ISend(box(4:6,1,1),6*(y_max+6), MPI_DOUBLE_PRECISION, &
+      call MPI_ISend(box(4:6,1,1),3*(y_max+6), MPI_DOUBLE_PRECISION, &
       & rank-1, 1, MPI_comm_world, sreqL1, ierr)
       if (ierr/=0) stop 'Error with MPI_ISend sreqL1'
+      call MPI_ISend(box(4:6,1,2),3*(y_max+6), MPI_DOUBLE_PRECISION, &
+      & rank-1, 11, MPI_comm_world, sreqL3, ierr)
+      if (ierr/=0) stop 'Error with MPI_ISend sreqL3'
       ! Send occupation data
       call MPI_ISend(occupied(4:6,1), 3*(y_max+6), MPI_LOGICAL, &
       & rank-1, 2, MPI_comm_world, sreqL2, ierr)
       if (ierr/=0) stop 'Error with MPI_ISend sreqL2'
 
       ! Receive coordinate data from the left
-      call MPI_Irecv(box(1:3,1,1), 6*(y_max+6), MPI_DOUBLE_PRECISION, &
+      call MPI_Irecv(box(1:3,1,1), 3*(y_max+6), MPI_DOUBLE_PRECISION, &
       & rank-1, 3, MPI_comm_world, reqL1, ierr)
       if (ierr/=0) stop 'Error with MPI_Irecv reqL1'
+      call MPI_Irecv(box(1:3,1,2), 3*(y_max+6), MPI_DOUBLE_PRECISION, &
+      & rank-1, 33, MPI_comm_world, reqL3, ierr)
+      if (ierr/=0) stop 'Error with MPI_Irecv reqL3'
       ! Receive occupation data from the left
       call MPI_Irecv(occupied(1:3,1), 3*(y_max+6), MPI_LOGICAL, &
       & rank-1, 4, MPI_comm_world, reqL2, ierr)
@@ -226,18 +232,24 @@ program packing
       ! endif
 
       ! Send coordinate data
-      call MPI_ISend(box(x_max+1:x_max+3,1,1),6*(y_max+6), MPI_DOUBLE_PRECISION, &
+      call MPI_ISend(box(x_max+1:x_max+3,1,1),3*(y_max+6), MPI_DOUBLE_PRECISION, &
       & rank+1, 3, MPI_comm_world, sreqR1, ierr)
       if (ierr/=0) stop 'Error with MPI_ISend sreqR1'
+      call MPI_ISend(box(x_max+1:x_max+3,1,2),3*(y_max+6), MPI_DOUBLE_PRECISION, &
+      & rank+1, 33, MPI_comm_world, sreqR3, ierr)
+      if (ierr/=0) stop 'Error with MPI_ISend sreqR3'
       ! Send occupation data
       call MPI_ISend(occupied(x_max+1:x_max+3,1), 3*(y_max+6), MPI_LOGICAL, &
       & rank+1, 4, MPI_comm_world, sreqR2, ierr)
       if (ierr/=0) stop 'Error with MPI_ISend sreqR2'
 
       ! Receive coordinate data from the right
-      call MPI_Irecv(box(x_max+4:x_max+6,1,1), 6*(y_max+6), MPI_DOUBLE_PRECISION, &
+      call MPI_Irecv(box(x_max+4:x_max+6,1,1), 3*(y_max+6), MPI_DOUBLE_PRECISION, &
       & rank+1, 1, MPI_comm_world, reqR1, ierr)
       if (ierr/=0) stop 'Error with MPI_Irecv reqR1'
+      call MPI_Irecv(box(x_max+4:x_max+6,1,2), 3*(y_max+6), MPI_DOUBLE_PRECISION, &
+      & rank+1, 11, MPI_comm_world, reqR3, ierr)
+      if (ierr/=0) stop 'Error with MPI_Irecv reqR3'
       ! Receive occupation data from the right
       call MPI_Irecv(occupied(x_max+4:x_max+6,1), 3*(y_max+6), MPI_LOGICAL, &
       & rank+1, 2, MPI_comm_world, reqR2, ierr)
@@ -254,18 +266,24 @@ program packing
       ! endif
 
       ! Send coordinate data
-      call MPI_ISend(box(:,y_max+1:y_max+3,1), 6*(x_max+6), MPI_DOUBLE_PRECISION, &
+      call MPI_ISend(box(:,y_max+1:y_max+3,1), 3*(x_max+6), MPI_DOUBLE_PRECISION, &
       & rank+x_div, 5, MPI_comm_world, sreqT1, ierr)
       if (ierr/=0) stop 'Error with MPI_ISend sreqT1'
+      call MPI_ISend(box(:,y_max+1:y_max+3,2), 3*(x_max+6), MPI_DOUBLE_PRECISION, &
+      & rank+x_div, 55, MPI_comm_world, sreqT3, ierr)
+      if (ierr/=0) stop 'Error with MPI_ISend sreqT3'
       ! Send occupation data
       call MPI_ISend(occupied(:,y_max+1:y_max+3), 3*(x_max+6), MPI_LOGICAL, &
       & rank+x_div, 6, MPI_comm_world, sreqT2, ierr)
       if (ierr/=0) stop 'Error with MPI_ISend sreqT2'
 
       ! Receive coordinate data from above
-      call MPI_Irecv(box(:,y_max+4:y_max+6,1), 6*(x_max+6), MPI_DOUBLE_PRECISION, &
+      call MPI_Irecv(box(:,y_max+4:y_max+6,1), 3*(x_max+6), MPI_DOUBLE_PRECISION, &
       & rank+x_div, 7, MPI_comm_world, reqT1, ierr)
       if (ierr/=0) stop 'Error with MPI_Irecv reqT1'
+      call MPI_Irecv(box(:,y_max+4:y_max+6,2), 3*(x_max+6), MPI_DOUBLE_PRECISION, &
+      & rank+x_div, 77, MPI_comm_world, reqT3, ierr)
+      if (ierr/=0) stop 'Error with MPI_Irecv reqT3'
       ! Receive occupation data from above
       call MPI_Irecv(occupied(:,y_max+4:y_max+6), 3*(x_max+6), MPI_LOGICAL, &
       & rank+x_div, 8, MPI_comm_world, reqT2, ierr)
@@ -282,18 +300,24 @@ program packing
       ! end if
 
       ! Send coordinate data
-      call MPI_ISend(box(:,4:6,1), 6*(x_max+6), MPI_DOUBLE_PRECISION, &
+      call MPI_ISend(box(:,4:6,1), 3*(x_max+6), MPI_DOUBLE_PRECISION, &
       & rank-x_div, 7, MPI_comm_world, sreqB1, ierr)
       if (ierr/=0) stop 'Error with MPI_ISend sreqB1'
+      call MPI_ISend(box(:,4:6,2), 3*(x_max+6), MPI_DOUBLE_PRECISION, &
+      & rank-x_div, 77, MPI_comm_world, sreqB3, ierr)
+      if (ierr/=0) stop 'Error with MPI_ISend sreqB3'
       ! Send occupation data
       call MPI_ISend(occupied(:,4:6), 3*(x_max+6), MPI_LOGICAL, &
       & rank-x_div, 8, MPI_comm_world, sreqB2, ierr)
       if (ierr/=0) stop 'Error with MPI_ISend sreqB2'
 
       ! Receive coordinate data from below
-      call MPI_Irecv(box(:,1:3,1), 6*(x_max+6), MPI_DOUBLE_PRECISION, &
+      call MPI_Irecv(box(:,1:3,1), 3*(x_max+6), MPI_DOUBLE_PRECISION, &
       & rank-x_div, 5, MPI_comm_world, reqB1, ierr)
       if (ierr/=0) stop 'Error with MPI_Irecv reqB1'
+      call MPI_Irecv(box(:,1:3,2), 3*(x_max+6), MPI_DOUBLE_PRECISION, &
+      & rank-x_div, 55, MPI_comm_world, reqB3, ierr)
+      if (ierr/=0) stop 'Error with MPI_Irecv reqB3'
       ! Receive occupation data from below
       call MPI_Irecv(occupied(:,1:3), 3*(x_max+6), MPI_LOGICAL, &
       & rank-x_div, 6, MPI_comm_world, reqB2, ierr)
@@ -306,10 +330,12 @@ program packing
       ! Check array 1 has sent
       call MPI_wait(sreqL1,sL1status,ierr)
       if (ierr/=0) stop 'Error with MPI_wait sreqL1'
-
       ! Check array 2 has sent
       call MPI_wait(sreqL2,sL2status,ierr)
       if (ierr/=0) stop 'Error with MPI_wait sreqL2'
+      ! Check array 3 has sent
+      call MPI_wait(sreqL3,sL3status,ierr)
+      if (ierr/=0) stop 'Error with MPI_wait sreqL3'
 
       ! Ensure array 1 is received
       call MPI_wait(reqL1,rL1status,ierr)
@@ -317,6 +343,9 @@ program packing
       ! Ensure array 2 is received
       call MPI_wait(reqL2,rL2status,ierr)
       if (ierr/=0) stop 'Error with MPI_wait reqL2'
+      ! Ensure array 3 is received
+      call MPI_wait(reqL3,rL3status,ierr)
+      if (ierr/=0) stop 'Error with MPI_wait reqL3'
 
       ! unblock region around test coordinates (when near edge)
       ! if (int(x) < 7) then
@@ -334,6 +363,9 @@ program packing
       ! Check array 2 has sent
       call MPI_wait(sreqR2,sR2status,ierr)
       if (ierr/=0) stop 'Error with MPI_wait sreqR2'
+      ! Check array 3 has sent
+      call MPI_wait(sreqR3,sR3status,ierr)
+      if (ierr/=0) stop 'Error with MPI_wait sreqR3'
 
       ! Ensure array 1 is received
       call MPI_wait(reqR1,rR1status,ierr)
@@ -341,6 +373,9 @@ program packing
       ! Ensure array 2 is received
       call MPI_wait(reqR2,rR2status,ierr)
       if (ierr/=0) stop 'Error with MPI_wait reqR2'
+      !  Ensure array 3 is received
+      call MPI_wait(reqR3,rR3status,ierr)
+      if (ierr/=0) stop 'Error with MPI_wait reqR3'
 
       ! unblock region around test coordinates (when near edge)
       ! if (int(x) > x_max) then
@@ -358,6 +393,9 @@ program packing
       ! Check array 2 has sent
       call MPI_wait(sreqT2,sT2status,ierr)
       if (ierr/=0) stop 'Error with MPI_wait sreqT2'
+      ! Check array 3 has sent
+      call MPI_wait(sreqT3,sT3status,ierr)
+      if (ierr/=0) stop 'Error with MPI_wait sreqT3'
 
       ! Ensure array 1 is received
       call MPI_wait(reqT1,rT1status,ierr)
@@ -365,6 +403,9 @@ program packing
       ! Ensure array 2 is received
       call MPI_wait(reqT2,rT2status,ierr)
       if (ierr/=0) stop 'Error with MPI_wait reqT2'
+      ! Ensure array 3 is received
+      call MPI_wait(reqT3,rT3status,ierr)
+      if (ierr/=0) stop 'Error with MPI_wait reqT3'
 
       ! Set arrays back to true values, while these coordinates are tested
       ! if (int(y) > y_max) then
@@ -382,6 +423,9 @@ program packing
       ! Check array 2 has sent
       call MPI_wait(sreqB2,sB2status,ierr)
       if (ierr/=0) stop 'Error with MPI_wait sreqB2'
+      ! Check array 3 has sent
+      call MPI_wait(sreqB3,sB3status,ierr)
+      if (ierr/=0) stop 'Error with MPI_wait sreqB3'
 
       ! Ensure array 1 is received
       call MPI_wait(reqB1,rB1status,ierr)
@@ -389,6 +433,9 @@ program packing
       ! Ensure array 2 is received
       call MPI_wait(reqB2,rB2status,ierr)
       if (ierr/=0) stop 'Error with MPI_wait reqB2'
+      ! Ensure array 3 is received
+      call MPI_wait(reqB3,rB3status,ierr)
+      if (ierr/=0) stop 'Error with MPI_wait reqB3'
 
       ! if (int(y) < 7) then
       !   occupied(int(x), int(y)) = .false.
