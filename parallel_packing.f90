@@ -113,22 +113,53 @@ program packing
     if ( ios /= 0 ) stop "Error opening file segment.dat"
   endif
 
-  1 format('Error: number of threads,',i4,', larger than array size',i8)
+  ! 1 format('Error: more than',i2,' threads needed for effective parallelisation')
+  ! if ( size < 3 ) then
+  !   if ( rank == 0 ) print 1, size
+  !   call MPI_Finalize(ierr)
+  !   stop
+  ! endif
+
+  2 format('Error: number of threads,',i4,', larger than array size',i8)
   if ( size > L**2 ) then
-    if ( rank == 0 ) print 1, size, L**2
+    if ( rank == 0 ) print 2, size, L**2
     call MPI_Finalize(ierr)
     stop
   endif
 
   ! Decompose problem according to the number of threads
   ! Divide box into squares, or near rectangles if not possible
-  x_div = nint(sqrt(real(size)))
+  x_div = int(sqrt(real(size)))
+  ! Caveat for small numbers of CPUs
+  if ( x_div == size ) then
+    x_div = ceiling(sqrt(real(size)))
+  endif
   if ( mod(size,x_div) == 0 ) then
     y_div = size/x_div ! 2D decomposition
-  else ! Resort to 1D decomposition if 2D is not possible
+  else if ( mod(size,2) == 0 ) then
+    x_div = size/2 ! alternative 2D decomposition
+    y_div = 2
+  else if ( mod(size,3) == 0 ) then
+    x_div = size/3 ! alternative 2D decomposition
+    y_div = 3
+  else ! If 2D decomp not possible, give warning
+    if ( rank == 0 ) then
+      print*, "Warning: using untested 1D decomposition."
+      print*, "Results may be incorrect or inaccurate."
+    endif
     x_div = size
     y_div = 1
   endif
+  ! Added caveat for small numbers of CPUs
+  if ( x_div == 1 ) then
+    if ( rank == 0 ) then
+      print*, "Warning: using untested 1D decomposition."
+      print*, "Results may be incorrect or inaccurate."
+    endif
+    x_div = size
+    y_div = 1
+  endif
+
 
   ! Allocate number of grid points to each thread, adding leftovers to the
   ! far ends
@@ -145,8 +176,8 @@ program packing
   endif
 
   ! Initialise array on each thread
-  2 format('Array length on rank ',i4,' is ', i8, ' by ', i8)
-  print 2, rank, x_max, y_max
+  3 format('Array length on rank ',i4,' is ', i8, ' by ', i8)
+  print 3, rank, x_max, y_max
   ! Allocate arrays for storing coordinates (and occupation states) with a halo
   ! of +3 on each side
   allocate(box(x_max+6,y_max+6,2), stat=ierr)
@@ -497,9 +528,9 @@ program packing
 
   call MPI_Reduce(N_circ,N,1,MPI_INTEGER,MPI_SUM,0,MPI_COMM_WORLD,ierr)
 
-  ! if ( rank == 0 ) then
+  if ( rank == 0 ) then
     print*, pi*N*r**2/L**2, rank
-  ! endif
+  endif
 
   ! write the final packing fraction and print to terminal
   ! write(unit=22, fmt=*, iostat=ios) i, pi*N_circ*r**2/L**2
